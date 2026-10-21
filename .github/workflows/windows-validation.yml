@@ -1,0 +1,85 @@
+name: Native Windows validation
+run-name: Native Client5 ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - codex/temp-download-review2-20261021-425815
+    paths:
+      - '.github/ci/windows-request.json'
+      - '.github/ci/requirements-windows.txt'
+      - '.github/workflows/windows-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact temporary commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Install hash-pinned Windows toolchain
+        shell: pwsh
+        run: |
+          python --version
+          python -m pip install --disable-pip-version-check --no-input --require-hashes --only-binary=:all: --no-deps -r .github/ci/requirements-windows.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify and extract exact requested package
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, re, zipfile
+          request = json.loads(pathlib.Path('.github/ci/windows-request.json').read_text())
+          name, expected = request['package'], request['sha256'].lower()
+          if not re.fullmatch(r'[A-Za-z0-9_.-]+\.zip', name):
+              raise ValueError('Expected a package filename only')
+          if not re.fullmatch(r'[0-9a-f]{64}', expected):
+              raise ValueError('Expected the exact package SHA256')
+          package = pathlib.Path(name).resolve()
+          actual = hashlib.sha256(package.read_bytes()).hexdigest()
+          if actual != expected:
+              raise ValueError('Requested ZIP SHA256 mismatch')
+          destination = pathlib.Path('native-package').resolve()
+          destination.mkdir()
+          with zipfile.ZipFile(package) as archive:
+              if archive.testzip() is not None:
+                  raise ValueError('ZIP CRC failure')
+              for info in archive.infolist():
+                  candidate = (destination / info.filename).resolve()
+                  if not candidate.is_relative_to(destination):
+                      raise ValueError('Unsafe ZIP path')
+                  if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                      raise ValueError('Unexpected ZIP symlink')
+              archive.extractall(destination)
+          root = destination / 'STELEX_NEO_1040'
+          if not (root / 'tests/run_native_windows_ci.py').is_file():
+              raise ValueError('Native validation runner absent from requested ZIP')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as stream:
+              stream.write('PACKAGE_FILE=' + str(package) + '\n')
+              stream.write('PACKAGE_ROOT=' + str(root) + '\n')
+              stream.write('EXPECTED_PACKAGE_SHA256=' + expected + '\n')
+          print('Verified requested package:', name, actual)
+      - name: Run native Win32, GDI, report-launch and process checks
+        shell: pwsh
+        run: |
+          $zig = (python -c "import pathlib,ziglang; print(pathlib.Path(ziglang.__file__).parent / 'zig.exe')").Trim()
+          python "$env:PACKAGE_ROOT/tests/run_native_windows_ci.py" --package "$env:PACKAGE_FILE" --package-sha256 "$env:EXPECTED_PACKAGE_SHA256" --package-root "$env:PACKAGE_ROOT" --output "$env:GITHUB_WORKSPACE/native-evidence" --zig "$zig"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain JSON and logs only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-windows-${{ github.run_id }}
+          retention-days: 1
+          if-no-files-found: warn
+          path: |
+            native-evidence/*.json
+            native-evidence/*.log
