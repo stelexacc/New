@@ -1,5 +1,5 @@
 name: Native Windows validation
-run-name: Native Reader6 ${{ github.sha }}
+run-name: Native Reader7 ${{ github.sha }}
 
 on:
   push:
