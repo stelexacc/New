@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Stelex GPT — Credit Control</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/admin/styles.css" />
+    <script type="module" src="/admin/app.js"></script>
+  </head>
+  <body>
+    <aside class="rail" aria-label="Stelex GPT">
+      <a class="brand" href="/" aria-label="Stelex GPT"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M5 8 27 22 32 38 37 22 59 8 55 29 34 48 32 58 30 48 9 29ZM7 35 26 46 29 55 9 46ZM57 35 38 46 35 55 55 46Z" fill="currentColor"/></svg><span>STELEX<span class="brand-detail">GPT / CONTROL</span></span></a>
+      <div class="rail-line"></div>
+      <div class="rail-item"><span class="rail-square">⌘</span><span data-i18n="creditControl">Credit-Verwaltung</span></div>
+      <p class="rail-footer" data-i18n="ownerOnly">Nur für Betreiber.<br />Kein Kundenzugang.</p>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div class="breadcrumb"><span>STELEX</span><span class="slash">/</span><span data-i18n="console">ADMIN-KONSOLE</span></div>
+        <div class="topbar-actions"><div class="language" aria-label="Language / Sprache"><button type="button" data-lang="de" aria-pressed="true">DE</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div><button id="logout" class="button ghost small" type="button" data-i18n="logout" hidden>Abmelden</button></div>
+      </header>
+      <section class="page-intro"><div><div class="eyebrow"><span class="status-dot"></span><span data-i18n="ownerConsole">OWNER CONSOLE</span></div><h1 data-i18n="title">Deine Credits. Deine Kontrolle.</h1><p data-i18n="subtitle">Erstelle einmalig einlösbare Codes mit genau dem gewünschten Guthaben.</p></div><span class="version">CONTROL / 01</span></section>
+
+      <section id="login-panel" class="panel connection-panel">
+        <div class="panel-heading"><div><span class="step">01</span><h2 data-i18n="connectTitle">Sicher verbinden</h2></div><span class="badge" data-i18n="protected">GESCHÜTZT</span></div>
+        <p class="muted" data-i18n="connectDescription">Verbinde dich mit deinem Stelex-Server. Der Admin-Schlüssel bleibt nur bis zum Abmelden oder Schließen im Arbeitsspeicher.</p>
+        <form id="login-form" class="connect-grid">
+          <label><span data-i18n="serverUrl">Serveradresse</span><input id="server-url" type="url" required spellcheck="false" autocomplete="url" placeholder="https://stelex.example.com" /></label>
+          <label><span data-i18n="adminToken">Admin-Schlüssel</span><input id="admin-token" type="password" required minlength="16" maxlength="500" autocomplete="off" spellcheck="false" placeholder="••••••••••••••••••••" /></label>
+          <button id="login-submit" class="button primary" type="submit"><span data-i18n="connect">Verbinden</span><span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="connection-note" data-i18n="sameServer">Dieses Tool muss auf demselben Server wie die API geöffnet sein. Zugangsdaten gehören niemals in die Kunden-App.</p>
+        <a id="open-server" class="text-link" href="#" data-i18n="openServer" hidden>Admin-Tool auf diesem Server öffnen ↗</a>
+      </section>
+
+      <div id="workspace" hidden>
+        <section class="stats" aria-label="Statistics / Statistik">
+          <article class="stat"><div><span class="stat-icon" aria-hidden="true">◇</span><span data-i18n="issued">Ausgestellte Credits</span></div><strong id="stat-issued">0</strong><span class="stat-caption" data-i18n="issuedCaption">Summe aller erstellten Codes</span></article>
+          <article class="stat"><div><span class="stat-icon" aria-hidden="true">↗</span><span data-i18n="redeemed">Eingelöste Credits</span></div><strong id="stat-redeemed">0</strong><span class="stat-caption" data-i18n="redeemedCaption">Guthaben bei deinen Kunden</span></article>
+          <article class="stat"><div><span class="stat-icon" aria-hidden="true">⌁</span><span data-i18n="availableCodes">Verfügbare Codes</span></div><strong id="stat-available">0</strong><span class="stat-caption"><span id="stat-users">0</span> <span data-i18n="registeredUsers">registrierte Konten</span></span></article>
+        </section>
+        <div class="generator-layout">
+          <section class="panel generator">
+            <div class="panel-heading"><div><span class="step">01</span><h2 data-i18n="generatorTitle">Codes erstellen</h2></div><span class="badge subtle">STELEX KEY</span></div>
+            <p class="muted" data-i18n="generatorDescription">Du bestimmst das Guthaben. Jeder Code kann genau einmal eingelöst werden.</p>
+            <form id="generate-form">
+              <div class="two-columns"><label><span data-i18n="creditsPerCode">Credits pro Code</span><div class="input-unit"><input id="credits" type="number" value="100" min="1" max="1000000000" step="1" inputmode="numeric" required /><span>CR</span></div></label><label><span data-i18n="quantity">Anzahl der Codes</span><input id="quantity" type="number" value="1" min="1" max="100" step="1" inputmode="numeric" required /></label></div>
+              <label class="note-label"><span><span data-i18n="internalNote">Interne Notiz</span> <span class="optional" data-i18n="optional">optional</span></span><input id="note" maxlength="200" data-i18n-placeholder="notePlaceholder" placeholder="Zum Beispiel: Discord-Bestellung #1024" /></label>
+              <div class="generation-summary"><span data-i18n="totalCredits">Gesamtes Guthaben</span><strong><span id="total-credits">100</span> CR</strong></div>
+              <button id="generate-submit" type="submit" class="button primary full"><span data-i18n="generate">Codes generieren</span><span aria-hidden="true">＋</span></button>
+            </form>
+            <p class="secure-note"><span aria-hidden="true">◈</span><span data-i18n="keySecurity">Kryptografisch zufällig. Auf dem Server nur als Hash gespeichert.</span></p>
+          </section>
+          <section class="panel generated-panel">
+            <div class="panel-heading"><div><span class="step">02</span><h2 data-i18n="generatedTitle">Deine neuen Codes</h2></div><span id="generated-count" class="counter">0</span></div>
+            <div id="generated-empty" class="empty-state"><div class="empty-icon" aria-hidden="true">⌘</div><h3 data-i18n="emptyTitle">Bereit für den ersten Code.</h3><p data-i18n="emptyDescription">Neue Codes erscheinen hier. Kopiere oder exportiere sie direkt nach dem Erstellen.</p></div>
+            <div id="generated-content" hidden><p class="notice" data-i18n="saveWarning">Jetzt sichern: Vollständige Codes werden nur einmal angezeigt und sind später nicht wiederherstellbar.</p><div id="generated-list" class="generated-list"></div><div class="code-actions"><button id="copy-all" class="button secondary" type="button" data-i18n="copyAll">Alle kopieren</button><button id="export-csv" class="button ghost" type="button" data-i18n="exportCsv">CSV exportieren ↓</button></div></div>
+          </section>
+        </div>
+        <section class="panel history-panel">
+          <div class="panel-heading"><div><span class="step">03</span><h2 data-i18n="historyTitle">Code-Verlauf</h2></div><button id="refresh" class="button ghost small" type="button"><span aria-hidden="true">↻</span><span data-i18n="refresh">Aktualisieren</span></button></div>
+          <div class="history-toolbar"><p class="muted" data-i18n="historyDescription">Status und Guthaben deiner zuletzt erstellten Codes. Vollständige Codes bleiben verborgen.</p><label class="search-label"><span class="sr-only" data-i18n="search">Verlauf durchsuchen</span><input id="search" type="search" data-i18n-placeholder="searchPlaceholder" placeholder="Notiz oder Kennung suchen …" /></label></div>
+          <div class="table-container"><table><thead><tr><th data-i18n="keyId">Code-Kennung</th><th data-i18n="credits">Credits</th><th data-i18n="status">Status</th><th data-i18n="created">Erstellt</th><th data-i18n="note">Notiz</th></tr></thead><tbody id="history-body"></tbody></table></div><p id="history-empty" class="history-empty" data-i18n="historyEmpty">Noch keine Codes erstellt.</p>
+        </section>
+      </div>
+      <footer><span>© <span id="year"></span> STELEX GPT</span><span data-i18n="footer">Guthaben wird erst beim Einlösen einem Konto gutgeschrieben.</span></footer>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
