@@ -1,0 +1,60 @@
+name: Build Stelex GPT Windows release
+
+on:
+  push:
+    branches: [stelex-gpt-v1.0.0]
+    paths:
+      - '.github/workflows/windows-release.yml'
+      - 'scripts/**'
+      - 'src/**'
+      - 'public/**'
+      - 'server/**'
+      - 'desktop/**'
+      - 'admin/**'
+      - 'package*.json'
+      - 'vite.config.js'
+      - 'index.html'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stelex-gpt-windows-v1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - name: Install verified build tools
+        run: sudo apt-get update && sudo apt-get install -y nsis p7zip-full
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run backend tests
+        run: npm test
+      - name: Build Windows app and single-file setup
+        run: |
+          npm run package:windows
+          node scripts/package-installer.mjs
+          7z t artifacts/Stelex-GPT-Setup-1.0.0.exe
+          sha256sum --check artifacts/Stelex-GPT-Setup-1.0.0.exe.sha256
+        working-directory: .
+      - name: Publish installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view v1.0.0 >/dev/null 2>&1; then
+            gh release create v1.0.0 --target "$GITHUB_SHA" --title "Stelex GPT 1.0.0" --draft --notes "Stelex GPT Windows setup. Install Ollama and a model for real AI replies."
+          fi
+          gh release upload v1.0.0 artifacts/Stelex-GPT-Setup-1.0.0.exe artifacts/Stelex-GPT-Setup-1.0.0.exe.sha256 --clobber
+          gh release edit v1.0.0 --draft=false --latest
