@@ -81,6 +81,8 @@ jobs:
           $process = Start-Process -FilePath $env:STELEX_ADMIN_NATIVE_EXE -PassThru
           if (-not $process.WaitForExit(60000)) { taskkill.exe /PID $process.Id /T /F | Out-Null; throw 'Admin startup timed out.' }
           $process.Refresh()
+          Write-Host ('Admin launcher exit code: ' + $process.ExitCode)
+          if (Test-Path -LiteralPath $resultFile) { Get-Content -LiteralPath $resultFile }
           if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $resultFile)) { throw 'Admin startup failed.' }
           $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
           if (-not $result.ok -or $result.view -ne 'locked-admin' -or -not $result.wrongCodeRejected -or -not $result.privateFilesAbsent) { throw 'Admin code protection failed.' }

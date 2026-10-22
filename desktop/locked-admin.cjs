@@ -2,7 +2,7 @@
 const { app,BrowserWindow,ipcMain }=require('electron');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const {pathToFileURL}=require('node:url');
+const {fileURLToPath}=require('node:url');
 const {open}=require('./admin-bundle.cjs');
 app.setName('Stelex Admin');
 app.setAppUserModelId('com.stelex.admin');
@@ -13,7 +13,11 @@ const smoke=process.env.CI==='true' && process.env.STELEX_ADMIN_LOCK_SMOKE_RESUL
 let unlocked=false,busy=false,attempts=[],window;
 const loginFile=path.join(__dirname,'locked-admin.html');
 async function unlock(event,code) {
-  if (!window || event.sender!==window.webContents || event.senderFrame!==window.webContents.mainFrame || event.senderFrame.url!==pathToFileURL(loginFile).href) throw new Error('Unknown window.');
+  let senderFile;
+  try { senderFile=path.normalize(fileURLToPath(event.senderFrame.url)); } catch { throw new Error('Unknown window.'); }
+  const expectedFile=path.normalize(loginFile);
+  const sameFile=process.platform==='win32' ? senderFile.toLowerCase()===expectedFile.toLowerCase() : senderFile===expectedFile;
+  if (!window || event.sender!==window.webContents || event.senderFrame!==window.webContents.mainFrame || !sameFile) throw new Error('Unknown window.');
   if (busy || unlocked) return {ok:false,error:'Bitte warten.'};
   attempts=attempts.filter(at=>Date.now()-at<30000);
   if (attempts.length>=5) return {ok:false,error:'Bitte warte 30 Sekunden und versuche es erneut.'};
@@ -52,7 +56,14 @@ app.whenReady().then(async()=>{
       state.privateFilesAbsent=await missing(path.join(__dirname,'..','admin')) && await missing(path.join(process.resourcesPath,'owner-admin-auth.json'));
       state.ok=state.ok && state.privateFilesAbsent;
       await fs.mkdir(path.dirname(smoke),{recursive:true});await fs.writeFile(smoke,JSON.stringify(state)+'\n');app.exit(state.ok?0:1);
-    } catch {app.exit(1);}
+    } catch(error) {
+      await fs.mkdir(path.dirname(smoke),{recursive:true});
+      await fs.writeFile(smoke,JSON.stringify({ok:false,stage:'lock-smoke',error:error.message})+'\n');
+      app.exit(1);
+    }
   });
   await window.loadFile(loginFile);
-}).catch(()=>app.exit(1));
+}).catch(async error=>{
+  if(smoke){try{await fs.mkdir(path.dirname(smoke),{recursive:true});await fs.writeFile(smoke,JSON.stringify({ok:false,stage:'startup',error:error.message})+'\n');}catch{}}
+  app.exit(1);
+});

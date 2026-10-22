@@ -26,7 +26,7 @@ async function fixture(t){
     loadFile(){return Promise.resolve();}hide(){this.hidden=true;}isDestroyed(){return false;}destroy(){this.destroyed=true;}
   }
   const globals={};
-  const context={require(name){if(name==='electron')return{app,BrowserWindow,ipcMain:{handle(_name,fn){handler=fn;}}};if(name==='./admin-bundle.cjs')return bundleModule;if(name==='./main.cjs'){handoffs++;return{};}return require(name);},__dirname:desktop,process:{resourcesPath:resources,env:{}},global:globals,Date:{now:()=>time},console};
+  const context={require(name){if(name==='electron')return{app,BrowserWindow,ipcMain:{handle(_name,fn){handler=fn;}}};if(name==='./admin-bundle.cjs')return bundleModule;if(name==='./main.cjs'){handoffs++;return{};}return require(name);},__dirname:desktop,process:{resourcesPath:resources,env:{},platform:'win32'},global:globals,Date:{now:()=>time},console};
   vm.runInNewContext(source,context);
   await new Promise(resolve=>setImmediate(resolve));
   const event=()=>({sender:window.webContents,senderFrame:window.webContents.mainFrame});
@@ -54,4 +54,13 @@ test('five bad attempts throttle the unlock without exposing or writing private 
   await assert.rejects(()=>access(path.join(f.resources,'owner-admin-auth.json')));
   assert.equal(f.handoffs(),0);
   f.advance();assert.equal((await f.unlock(f.code)).ok,true);assert.equal(f.handoffs(),1);
+});
+
+
+test('Windows file URL casing does not reject the legitimate unlock window',async t=>{
+  const f=await fixture(t);
+  const original=f.window.webContents.mainFrame.url;
+  f.window.webContents.mainFrame.url=original.toUpperCase();
+  assert.equal((await f.unlock(f.code)).ok,true);
+  assert.equal(f.handoffs(),1);
 });
