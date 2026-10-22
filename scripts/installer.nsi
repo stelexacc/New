@@ -61,7 +61,7 @@ Section "Stelex GPT"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "Publisher" "Stelex"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "DisplayIcon" "$INSTDIR\resources\app\desktop\assets\icon.ico"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "UninstallString" '$"$INSTDIR\Uninstall Stelex GPT.exe$"'
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "UninstallString" '"$INSTDIR\Uninstall Stelex GPT.exe"'
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "EstimatedSize" ${ESTIMATED_SIZE}
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Stelex GPT" "NoRepair" 1

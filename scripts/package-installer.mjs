@@ -35,7 +35,7 @@ try {
     ...directories.sort((a, b) => b.length - a.length).map(dir => `RMDir "$INSTDIR\\${windowsName(dir)}"`),
     '',
   ].join('\n'));
-  const args = ['-V3', `-DPACKAGE_DIR=${packageDir}`, `-DOUTPUT_FILE=${output}`, `-DICON_FILE=${path.join(root, 'desktop', 'assets', 'icon.ico')}`, `-DUNINSTALL_MANIFEST=${manifest}`, `-DESTIMATED_SIZE=${Math.ceil(bytes / 1024)}`, path.join(root, 'scripts', 'installer.nsi')];
+  const args = ['-WX', '-V3', `-DPACKAGE_DIR=${packageDir}`, `-DOUTPUT_FILE=${output}`, `-DICON_FILE=${path.join(root, 'desktop', 'assets', 'icon.ico')}`, `-DUNINSTALL_MANIFEST=${manifest}`, `-DESTIMATED_SIZE=${Math.ceil(bytes / 1024)}`, path.join(root, 'scripts', 'installer.nsi')];
   await new Promise((resolve, reject) => {
     const compiler = spawn(process.env.STELEX_MAKENSIS_PATH || 'makensis', args, { cwd: root, stdio: 'inherit' });
     compiler.on('error', reject);
