@@ -1,0 +1,33 @@
+name: Remove the requested Admin download
+'on':
+  push:
+    branches: ['stelex-admin-v1.3.1']
+    paths: ['admin-release-removal.json']
+permissions:
+  contents: read
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove this Admin release only after an explicit request
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GH_REPO" == stelexacc/New && "$GITHUB_REF_NAME" == stelex-admin-v1.3.1 ]]
+          expected=$(node -e "const r=require('./admin-release-removal.json');if(r.remove!==true || r.releaseTag!=='admin-v1.3.1' || !/^[a-f0-9]{40}$/.test(r.expectedCommit))process.exit(1);console.log(r.expectedCommit)")
+          git merge-base --is-ancestor "$expected" HEAD
+          actual=$(gh api "repos/$GH_REPO/commits/admin-v1.3.1" --jq .sha)
+          [[ "$actual" == "$expected" ]]
+          gh release view admin-v1.3.1 --json body --jq .body > "$RUNNER_TEMP/admin-removal-body.txt"
+          grep -Fx '<!-- stelex-admin-release:1.3.1 -->' "$RUNNER_TEMP/admin-removal-body.txt"
+          gh release delete admin-v1.3.1 --yes --cleanup-tag
+          gh api --method DELETE "repos/$GH_REPO/git/refs/heads/stelex-admin-v1.3.1"

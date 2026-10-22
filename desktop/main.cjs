@@ -264,7 +264,14 @@ function createWindow(admin = false) {
   adminWindows.set(window, admin);
   window.on('closed', () => windows.delete(window));
   window.once('ready-to-show', () => window.show());
-  window.webContents.once('did-finish-load', () => { void inspectSmoke(window, admin); });
+  window.webContents.once('did-finish-load', () => {
+    void inspectSmoke(window, admin);
+    const key = Symbol.for('stelex.admin.launchCode');
+    if (admin && activeUrl === localUrl && typeof global[key] === 'string') {
+      const code=global[key];delete global[key];
+      void window.webContents.executeJavaScript(`(() => { const input=document.querySelector('#admin-token'); const form=document.querySelector('#login-form'); if(input && form){input.value=${JSON.stringify(code)};form.requestSubmit();} })()`).catch(()=>{});
+    }
+  });
   window.webContents.setWindowOpenHandler(({ url }) => { void openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, target) => {
     let origin;

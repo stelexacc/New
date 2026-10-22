@@ -1,0 +1,109 @@
+name: Build the code-protected standalone Admin download
+'on':
+  push:
+    branches: ['stelex-admin-v1.3.1']
+    paths: ['desktop/**', 'scripts/**', 'server/**', 'src/**', 'public/**', 'tests/**', 'package*.json', 'private-admin.bundle.json', 'docs/**', '.github/workflows/admin-release.yml']
+permissions:
+  contents: read
+concurrency:
+  group: stelex-admin-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - name: Test and compile the locked portable Admin tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y nsis p7zip-full
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+          node scripts/package-admin.mjs
+          makensis -WX -V3 -DRELEASE_VERSION=1.3.1 "-DPACKAGE_DIR=$PWD/artifacts/Stelex-Admin-Windows-x64" "-DOUTPUT_FILE=$PWD/artifacts/Stelex-Admin-Portable-1.3.1.exe" "-DICON_FILE=$PWD/desktop/assets/icon.ico" scripts/admin-portable.nsi
+          7z t artifacts/Stelex-Admin-Portable-1.3.1.exe
+          cd artifacts
+          sha256sum Stelex-Admin-Portable-1.3.1.exe > Stelex-Admin-Portable-1.3.1.exe.sha256
+      - name: Stage a private draft for the native Windows check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view admin-v1.3.1 --json isDraft --jq .isDraft > "$RUNNER_TEMP/admin-release-draft.txt" 2>/dev/null; then
+            [[ $(cat "$RUNNER_TEMP/admin-release-draft.txt") == true ]] || { echo 'Admin version already public; refusing replacement.' >&2; exit 1; }
+            gh release edit admin-v1.3.1 --draft=true --target "$GITHUB_SHA" --title 'STELEX Admin 1.3.1 — Codegeschuetztes Tool' --notes-file docs/ADMIN-1.3.1.md
+          else
+            gh release create admin-v1.3.1 --target "$GITHUB_SHA" --title 'STELEX Admin 1.3.1 — Codegeschuetztes Tool' --draft --notes-file docs/ADMIN-1.3.1.md
+          fi
+          gh release upload admin-v1.3.1 artifacts/Stelex-Admin-Portable-1.3.1.exe artifacts/Stelex-Admin-Portable-1.3.1.exe.sha256 --clobber
+  windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download and verify the staged single-file application
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $distribution = Join-Path $env:RUNNER_TEMP 'stelex-admin-distribution'
+          New-Item -ItemType Directory -Path $distribution -Force | Out-Null
+          gh release download admin-v1.3.1 --repo $env:GH_REPO --dir $distribution --pattern 'Stelex-Admin-Portable-1.3.1.exe*'
+          if ($LASTEXITCODE -ne 0) { throw 'Admin download failed.' }
+          $file = Join-Path $distribution 'Stelex-Admin-Portable-1.3.1.exe'
+          $expected = ((Get-Content -LiteralPath ($file + '.sha256') -Raw).Trim() -split '\s+')[0]
+          if ($expected -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $expected) { throw 'Admin checksum mismatch.' }
+          "STELEX_ADMIN_NATIVE_EXE=$file" >> $env:GITHUB_ENV
+      - name: Launch the real EXE and reject an incorrect access code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resultFile = Join-Path $env:RUNNER_TEMP 'stelex-admin-locked-start.json'
+          $env:STELEX_ADMIN_LOCK_SMOKE_RESULT = $resultFile
+          $process = Start-Process -FilePath $env:STELEX_ADMIN_NATIVE_EXE -PassThru
+          if (-not $process.WaitForExit(60000)) { taskkill.exe /PID $process.Id /T /F | Out-Null; throw 'Admin startup timed out.' }
+          $process.Refresh()
+          if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $resultFile)) { throw 'Admin startup failed.' }
+          $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
+          if (-not $result.ok -or $result.view -ne 'locked-admin' -or -not $result.wrongCodeRejected -or -not $result.privateFilesAbsent) { throw 'Admin code protection failed.' }
+          Get-Content -LiteralPath $resultFile >> $env:GITHUB_STEP_SUMMARY
+  publish:
+    needs: [build, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Publish only the verified locked Admin download
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=$(gh release view admin-v1.3.1 --json targetCommitish --jq .targetCommitish)
+          draft=$(gh release view admin-v1.3.1 --json isDraft --jq .isDraft)
+          [[ "$target" == "$GITHUB_SHA" && "$draft" == true ]]
+          if existing=$(gh api "repos/$GH_REPO/commits/admin-v1.3.1" --jq .sha 2>/dev/null); then
+            [[ "$existing" == "$GITHUB_SHA" ]] || { echo 'An existing tag targets a different commit.' >&2; exit 1; }
+          fi
+          gh release edit admin-v1.3.1 --draft=false --latest=false
+          gh release view admin-v1.3.1 --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
