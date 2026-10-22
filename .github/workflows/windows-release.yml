@@ -1,0 +1,298 @@
+name: Build and verify Stelex GPT Windows release
+
+'on':
+  push:
+    branches: ['stelex-gpt-v*']
+    paths:
+      - '.github/workflows/windows-release.yml'
+      - 'scripts/**'
+      - 'src/**'
+      - 'public/**'
+      - 'server/**'
+      - 'desktop/**'
+      - 'admin/**'
+      - 'tests/**'
+      - 'docs/**'
+      - 'package*.json'
+      - '.gitattributes'
+      - '.env.example'
+      - 'README.md'
+      - 'VALIDATION.md'
+      - 'vite.config.js'
+      - 'index.html'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stelex-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-script-check:
+    name: Check Windows entry points without installing models
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the standalone batch entry point
+        shell: pwsh
+        run: |
+          cmd.exe /d /c scripts\Install.bat --help
+          if ($LASTEXITCODE -ne 0) { throw 'Install.bat --help failed.' }
+      - name: Parse PowerShell setup and embedded bootstrap
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Ollama.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          $raw = [IO.File]::ReadAllText((Join-Path $pwd 'scripts\Install.bat'))
+          $marker = '# STELEX_BOOTSTRAP_POWERSHELL'
+          $offset = $raw.LastIndexOf($marker, [StringComparison]::Ordinal)
+          if ($offset -lt 0) { throw 'The standalone bootstrap is missing.' }
+          [ScriptBlock]::Create($raw.Substring($offset + $marker.Length)) | Out-Null
+
+  build:
+    name: Test, build, and stage the customer download
+    needs: windows-script-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      already_published: ${{ steps.stage.outputs.already_published }}
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release identity
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version=$(node -p "require('./package.json').version")
+          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid numeric release version.' >&2; exit 1; }
+          [[ "$GITHUB_REF_NAME" == "stelex-gpt-v$release_version" ]] || { echo 'The branch and package versions must match.' >&2; exit 1; }
+          test -s "docs/RELEASE-$release_version.md"
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$release_version" >> "$GITHUB_OUTPUT"
+      - name: Install build and browser dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y nsis p7zip-full
+          npm ci --no-audit --no-fund
+          python -m pip install --disable-pip-version-check playwright
+          python -m playwright install --with-deps chromium
+          python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print('STELEX_CHROMIUM_PATH='+p.chromium.executable_path); p.stop()" >> "$GITHUB_ENV"
+      - name: Run backend, filesystem, and scheduling tests
+        run: npm test
+      - name: Build the production interface
+        run: npm run build
+      - name: Run real browser checks against an isolated demo server
+        shell: bash
+        run: |
+          set -euo pipefail
+          qa_directory="$RUNNER_TEMP/stelex-release-qa"
+          mkdir -p "$qa_directory"
+          STELEX_AI_MODELS='[{"id":"stelex-fast","name":"Stelex Fast","tier":0,"vision":true},{"id":"stelex-pro","name":"Stelex Pro","tier":2,"vision":true}]' STELEX_DATA_DIR="$qa_directory" STELEX_DEMO_MODE=true STELEX_PORT=4318 node server/index.mjs > "$RUNNER_TEMP/stelex-qa-server.log" 2>&1 &
+          qa_server_pid=$!
+          trap 'kill "$qa_server_pid" 2>/dev/null || true; wait "$qa_server_pid" 2>/dev/null || true' EXIT
+          qa_ready=false
+          for attempt in $(seq 1 60); do
+            if node -e "fetch('http://127.0.0.1:4318/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              qa_ready=true
+              break
+            fi
+            kill -0 "$qa_server_pid" 2>/dev/null || { tail -n 30 "$RUNNER_TEMP/stelex-qa-server.log"; exit 1; }
+            sleep 0.5
+          done
+          [[ "$qa_ready" == true ]] || { echo 'The isolated demo server never became ready.' >&2; exit 1; }
+          for smoke_script in tests/ui_smoke.py tests/features_smoke.py; do
+            python "$smoke_script" --base-url http://127.0.0.1:4318 --admin-token-file "$qa_directory/admin-token.txt"
+          done
+      - name: Build portable app and branded installers
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/package-windows.mjs
+          node scripts/package-installer.mjs
+          7z t "artifacts/Stelex-GPT-Windows-x64.zip"
+          7z t "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe"
+          cp scripts/Install.bat artifacts/Install.bat
+          cd artifacts
+          sha256sum Install.bat > Install.bat.sha256
+          for manifest in Install.bat.sha256 Stelex-GPT-Windows-x64.zip.sha256 "Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256"; do
+            sha256sum --check "$manifest"
+          done
+      - name: Bundle the customer installer without owner tools or source
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp "docs/RELEASE-$RELEASE_VERSION.md" artifacts/START-HIER.md
+          cd artifacts
+          zip -0 "STELEX-GPT-$RELEASE_VERSION-Komplett.zip" \
+            Install.bat Install.bat.sha256 START-HIER.md \
+            "Stelex-GPT-Setup-$RELEASE_VERSION.exe" "Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256"
+          7z t "STELEX-GPT-$RELEASE_VERSION-Komplett.zip"
+          sha256sum "STELEX-GPT-$RELEASE_VERSION-Komplett.zip" > "STELEX-GPT-$RELEASE_VERSION-Komplett.zip.sha256"
+      - name: Stage verified files in a private draft
+        id: stage
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release_state="$RUNNER_TEMP/stelex-release-state.json"
+          if gh release view "$RELEASE_TAG" --json isDraft,targetCommitish,tagName > "$release_state" 2>/dev/null; then
+            if [[ $(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).isDraft" "$release_state") != true ]]; then
+              released_commit=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
+              [[ "$released_commit" == "$GITHUB_SHA" ]] || { echo 'This version is already public for a different commit. Bump the version; published tags are never rewritten.' >&2; exit 1; }
+              echo 'already_published=true' >> "$GITHUB_OUTPUT"
+              echo 'The same commit is already published. Its existing release files will be tested without replacement.'
+              exit 0
+            fi
+            gh release edit "$RELEASE_TAG" --draft=true --target "$GITHUB_SHA" --title "Stelex GPT $RELEASE_VERSION" --notes-file "docs/RELEASE-$RELEASE_VERSION.md"
+          else
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Stelex GPT $RELEASE_VERSION" --draft --notes-file "docs/RELEASE-$RELEASE_VERSION.md"
+          fi
+          gh release upload "$RELEASE_TAG" \
+            artifacts/Install.bat artifacts/Install.bat.sha256 \
+            "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe" "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256" \
+            artifacts/Stelex-GPT-Windows-x64.zip artifacts/Stelex-GPT-Windows-x64.zip.sha256 \
+            "artifacts/STELEX-GPT-$RELEASE_VERSION-Komplett.zip" "artifacts/STELEX-GPT-$RELEASE_VERSION-Komplett.zip.sha256" \
+            --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/stelex-release-files.txt"
+          for expected_file in Install.bat Install.bat.sha256 "Stelex-GPT-Setup-$RELEASE_VERSION.exe" "Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256" Stelex-GPT-Windows-x64.zip Stelex-GPT-Windows-x64.zip.sha256; do
+            grep -Fx -- "$expected_file" "$RUNNER_TEMP/stelex-release-files.txt" >/dev/null
+          done
+          for expected_file in "STELEX-GPT-$RELEASE_VERSION-Komplett.zip" "STELEX-GPT-$RELEASE_VERSION-Komplett.zip.sha256"; do
+            grep -Fx -- "$expected_file" "$RUNNER_TEMP/stelex-release-files.txt" >/dev/null
+          done
+          echo 'already_published=false' >> "$GITHUB_OUTPUT"
+
+  native-windows:
+    name: Install and launch the customer Windows application
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    # GitHub limits draft visibility to repository collaborators with push access.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+      RELEASE_TAG: ${{ needs.build.outputs.tag }}
+      STELEX_DEMO_MODE: 'true'
+    steps:
+      - name: Download the staged distributions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $distribution = Join-Path $env:RUNNER_TEMP 'stelex-distribution'
+          New-Item -ItemType Directory -Path $distribution -Force | Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GH_REPO --dir $distribution --pattern 'Stelex-GPT-Setup-*.exe*' --pattern 'Stelex-GPT-Windows-x64.zip*'
+          if ($LASTEXITCODE -ne 0) { throw 'The staged release could not be downloaded.' }
+          foreach ($manifest in Get-ChildItem -LiteralPath $distribution -Filter '*.sha256') {
+            $line = (Get-Content -LiteralPath $manifest.FullName -Raw).Trim()
+            $match = [Regex]::Match($line, '^([a-fA-F0-9]{64})\s+\*?([^\r\n]+)$')
+            if (-not $match.Success) { throw 'A distribution checksum manifest is invalid.' }
+            $name = $match.Groups[2].Value
+            if ([IO.Path]::GetFileName($name) -ne $name) { throw 'Checksum manifests must reference a single filename.' }
+            $file = Join-Path $distribution $name
+            if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $match.Groups[1].Value) { throw "Checksum mismatch: $name" }
+          }
+          Expand-Archive -LiteralPath (Join-Path $distribution 'Stelex-GPT-Windows-x64.zip') -DestinationPath (Join-Path $env:RUNNER_TEMP 'stelex-portable')
+          "STELEX_DISTRIBUTION=$distribution" >> $env:GITHUB_ENV
+      - name: Run native portable and installed application smoke checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smokeDirectory = Join-Path $env:RUNNER_TEMP 'stelex-native-smoke'
+          New-Item -ItemType Directory -Path $smokeDirectory -Force | Out-Null
+          function Invoke-StelexSmoke([string]$Executable, [string]$Label, [string]$View) {
+            if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { throw "Missing native executable: $Label" }
+            $resultFile = Join-Path $smokeDirectory "$Label.json"
+            Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
+            $env:STELEX_SMOKE_TEST_FILE = $resultFile
+            $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -PassThru
+            try {
+              if (-not $process.WaitForExit(60000)) {
+                taskkill.exe /PID $process.Id /T /F | Out-Null
+                throw "Native startup timed out: $Label"
+              }
+              $process.Refresh()
+              if ($process.ExitCode -ne 0) { throw "Native application exited unsuccessfully: $Label ($($process.ExitCode))" }
+              if (-not (Test-Path -LiteralPath $resultFile -PathType Leaf)) { throw "The native application did not report a rendered page: $Label" }
+              $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
+              if (-not $result.ok -or $result.view -ne $View -or -not $result.demoMode) { throw "Native startup check failed: $Label" }
+              Get-Content -LiteralPath $resultFile >> $env:GITHUB_STEP_SUMMARY
+            } finally {
+              Remove-Item Env:STELEX_SMOKE_TEST_FILE -ErrorAction SilentlyContinue
+              if (-not $process.HasExited) { taskkill.exe /PID $process.Id /T /F | Out-Null }
+            }
+          }
+          $portable = Join-Path $env:RUNNER_TEMP 'stelex-portable\Stelex-GPT-Windows-x64'
+          Invoke-StelexSmoke (Join-Path $portable 'Stelex GPT.exe') 'portable-app' 'app'
+          $mainSetup = Join-Path $env:STELEX_DISTRIBUTION "Stelex-GPT-Setup-$env:RELEASE_VERSION.exe"
+          $mainInstaller = Start-Process -FilePath $mainSetup -ArgumentList '/S' -Wait -PassThru
+          if ($mainInstaller.ExitCode -ne 0) { throw 'The application installer failed.' }
+          $mainDirectory = Join-Path $env:LOCALAPPDATA 'Programs\Stelex GPT'
+          $installedPackage = Get-Content -LiteralPath (Join-Path $mainDirectory 'resources\app\package.json') -Raw | ConvertFrom-Json
+          if ($installedPackage.version -ne $env:RELEASE_VERSION) { throw 'The installed application has the wrong version.' }
+          Invoke-StelexSmoke (Join-Path $mainDirectory 'Stelex GPT.exe') 'installed-app' 'app'
+
+  publish:
+    name: Publish customer files only after native Windows checks pass
+    needs: [build, native-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.build.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Verify staged target and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ '${{ needs.build.outputs.already_published }}' == true ]]; then
+            released_commit=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
+            [[ "$released_commit" == "$GITHUB_SHA" ]] || { echo 'The public tag moved; refusing publication.' >&2; exit 1; }
+            gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          release_state=$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)
+          is_draft=$(node -p 'JSON.parse(process.argv[1]).isDraft' "$release_state")
+          target_commit=$(node -p 'JSON.parse(process.argv[1]).targetCommitish' "$release_state")
+          [[ "$is_draft" == true && "$target_commit" == "$GITHUB_SHA" ]] || { echo 'The draft no longer targets this verified commit.' >&2; exit 1; }
+          if existing_tag=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha 2>/dev/null); then
+            [[ "$existing_tag" == "$GITHUB_SHA" ]] || { echo 'An existing tag targets another commit. Published tags are never rewritten.' >&2; exit 1; }
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+          published_commit=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
+          [[ "$published_commit" == "$GITHUB_SHA" ]] || { echo 'The published tag has an unexpected commit.' >&2; exit 1; }
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

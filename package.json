@@ -1,0 +1,36 @@
+{
+  "name": "stelex-gpt",
+  "version": "1.3.1",
+  "private": true,
+  "type": "module",
+  "description": "Stelex GPT desktop workspace with plans, percentage quotas, accounts and admin control",
+  "engines": {
+    "node": ">=24.19.0"
+  },
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env server/index.mjs",
+    "dev:ui": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env server/index.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "desktop": "electron desktop/main.cjs",
+    "package:windows": "npm run build && node scripts/package-windows.mjs",
+    "package:installer": "npm run package:windows && node scripts/package-installer.mjs"
+  },
+  "dependencies": {
+    "dompurify": "3.4.17",
+    "lucide-react": "1.61.0",
+    "marked": "18.1.1",
+    "nodemailer": "10.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "undici": "8.12.3"
+  },
+  "devDependencies": {
+    "@electron/get": "5.1.0",
+    "electron": "45.0.0",
+    "extract-zip": "2.0.1",
+    "vite": "8.3.5"
+  }
+}
