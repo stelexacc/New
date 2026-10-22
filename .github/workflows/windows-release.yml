@@ -46,7 +46,7 @@ jobs:
           npm run package:windows
           node scripts/package-installer.mjs
           7z t artifacts/Stelex-GPT-Setup-1.0.0.exe
-          sha256sum --check artifacts/Stelex-GPT-Setup-1.0.0.exe.sha256
+          (cd artifacts && sha256sum --check Stelex-GPT-Setup-1.0.0.exe.sha256)
         working-directory: .
       - name: Publish installer
         env:
