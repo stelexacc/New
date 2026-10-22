@@ -6,6 +6,8 @@ Stelex GPT ist eine Desktop- und Webanwendung mit rot-schwarzem Stelex-Design, d
 
 ## Windows starten
 
+Die einzelne Datei `Stelex-GPT-Setup-1.0.0.exe` installiert die App für dein Windows-Benutzerkonto und legt Verknüpfungen für Stelex GPT und das Admin-Tool an. Alternativ kann das portable ZIP ohne Installation verwendet werden:
+
 1. Das Archiv `artifacts/Stelex-GPT-Windows-x64.zip` vollständig entpacken. Die EXE benötigt die Dateien im selben Ordner.
 2. Ollama installieren und das Modell laden. Dafür kann `Setup-Ollama.ps1` im entpackten Ordner verwendet werden, alternativ in PowerShell:
 
@@ -71,6 +73,8 @@ npm run package:windows
 ```
 
 Das Skript erzeugt ein portables x64-Archiv unter `artifacts/`. Die Dateien werden auf Linux zusammengestellt. Eine erfolgreiche Erstellung ist noch kein Ausführungstest unter Windows; den aktuellen Prüfstand dokumentiert [VALIDATION.md](VALIDATION.md).
+
+Mit installiertem NSIS 3.11 kann anschließend `node scripts/package-installer.mjs` die einzelne Setup-EXE aus dem vorbereiteten Paketordner erzeugen. Eine Deinstallation entfernt nur bekannte Programmdateien; persönliche Daten unter `%APPDATA%\Stelex GPT` bleiben erhalten.
 
 ## English
 
