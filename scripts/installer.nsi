@@ -9,8 +9,7 @@ OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\Stelex GPT"
 InstallDirRegKey HKCU "Software\Stelex GPT" "InstallDir"
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
-SetCompressorDictSize 32
+SetCompressor /SOLID zlib
 Icon "${ICON_FILE}"
 UninstallIcon "${ICON_FILE}"
 VIProductVersion "1.0.0.0"
