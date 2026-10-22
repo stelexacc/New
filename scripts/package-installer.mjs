@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageDir = path.join(root, 'artifacts', 'Stelex-GPT-Windows-x64');
-const output = path.join(root, 'artifacts', 'Stelex-GPT-Setup-1.0.0.exe');
+const version = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version;
+if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Installer requires a numeric release version.');
+const output = path.join(root, 'artifacts', 'Stelex-GPT-Setup-' + version + '.exe');
 const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'stelex-installer-'));
 const files = [], directories = [];
 let bytes = 0;
@@ -35,7 +37,7 @@ try {
     ...directories.sort((a, b) => b.length - a.length).map(dir => `RMDir "$INSTDIR\\${windowsName(dir)}"`),
     '',
   ].join('\n'));
-  const args = ['-WX', '-V3', `-DPACKAGE_DIR=${packageDir}`, `-DOUTPUT_FILE=${output}`, `-DICON_FILE=${path.join(root, 'desktop', 'assets', 'icon.ico')}`, `-DUNINSTALL_MANIFEST=${manifest}`, `-DESTIMATED_SIZE=${Math.ceil(bytes / 1024)}`, path.join(root, 'scripts', 'installer.nsi')];
+  const args = ['-WX', '-V3', '-DRELEASE_VERSION=' + version, `-DPACKAGE_DIR=${packageDir}`, `-DOUTPUT_FILE=${output}`, `-DICON_FILE=${path.join(root, 'desktop', 'assets', 'icon.ico')}`, `-DUNINSTALL_MANIFEST=${manifest}`, `-DESTIMATED_SIZE=${Math.ceil(bytes / 1024)}`, path.join(root, 'scripts', 'installer.nsi')];
   await new Promise((resolve, reject) => {
     const compiler = spawn(process.env.STELEX_MAKENSIS_PATH || 'makensis', args, { cwd: root, stdio: 'inherit' });
     compiler.on('error', reject);

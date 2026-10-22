@@ -6,21 +6,21 @@ Stelex GPT ist eine Desktop- und Webanwendung mit rot-schwarzem Stelex-Design, d
 
 ## Windows starten
 
-Die einzelne Datei `Stelex-GPT-Setup-1.0.0.exe` installiert die App für dein Windows-Benutzerkonto und legt Verknüpfungen für Stelex GPT und das Admin-Tool an. Alternativ kann das portable ZIP ohne Installation verwendet werden:
+Die einzelne Datei `Stelex-GPT-Setup-1.1.0.exe` installiert die App für dein Windows-Benutzerkonto und legt Verknüpfungen für Stelex GPT und das Admin-Tool an. Alternativ kann das portable ZIP ohne Installation verwendet werden:
 
 1. Das Archiv `artifacts/Stelex-GPT-Windows-x64.zip` vollständig entpacken. Die EXE benötigt die Dateien im selben Ordner.
-2. Ollama installieren und das Modell laden. Dafür kann `Setup-Ollama.ps1` im entpackten Ordner verwendet werden, alternativ in PowerShell:
+2. Im Startmenü **Stelex GPT → Modell einrichten** oder im Programmordner **Setup-Stelex-Model.bat** starten. Die Datei installiert Ollama bei Bedarf, lädt das Modell und speichert die Auswahl. Alternativ manuell in PowerShell:
 
    ```powershell
    winget install --exact --id Ollama.Ollama
    # Neues Terminal öffnen, nachdem die Installation abgeschlossen ist.
-   ollama pull qwen2.5-coder:1.5b
+   ollama pull huihui_ai/qwen3.5-abliterated:9b
    ```
 
 3. Ollama laufen lassen und `Stelex GPT.exe` öffnen. Ohne verfügbares Modell startet ein ausdrücklich gekennzeichneter Demomodus. Stelex GPT nach dem Modelldownload vollständig beenden und neu starten.
 4. Ein Konto anlegen. Konten, Chats und Guthaben gehören zum jeweils verbundenen Stelex-Server.
 
-Das Standardmodell ist bewusst kompakt und benötigt ungefähr 1 GB Download sowie zusätzlichen Arbeitsspeicher. Die Geschwindigkeit hängt von CPU/GPU und Kontextlänge ab. Andere installierte Modelle können über die Serverkonfiguration ausgewählt werden. Der Systemtext gibt der KI einen direkten, hilfreichen Programmierstil und die gewählte Sprache vor. Er umgeht keine Schutzmechanismen und garantiert keine bestimmte Antwort eines Modells.
+Das gewählte 9B-Modell benötigt einen Download von mehreren Gigabyte sowie ausreichend RAM oder VRAM. Die Modellgewichte sind nicht im Installer enthalten. Die Geschwindigkeit hängt von CPU/GPU und Kontextlänge ab. Andere installierte Modelle können über die Serverkonfiguration ausgewählt werden. Der Systemtext gibt der KI einen direkten, hilfreichen Programmierstil und die gewählte Sprache vor. Er umgeht keine Schutzmechanismen und garantiert keine bestimmte Antwort eines Modells.
 
 Die Windows-Binärdateien werden aus offiziellen Electron- und Node-Downloads erstellt; die Downloads werden anhand ihrer veröffentlichten SHA-256-Prüfsummen geprüft. Das Archiv enthält keine API-Schlüssel, keine Kontodaten und keinen vorkonfigurierten Admin-Schlüssel. Es ist keine signierte Windows-Installation.
 
@@ -52,7 +52,7 @@ Ohne `.env` läuft der Server standardmäßig lokal mit Demoantworten. Für echt
 
 ```sh
 cp .env.example .env
-ollama pull qwen2.5-coder:1.5b
+ollama pull huihui_ai/qwen3.5-abliterated:9b
 # Ollama muss auf 127.0.0.1:11434 laufen.
 npm start
 ```
@@ -80,7 +80,7 @@ Mit installiertem NSIS 3.11 kann anschließend `node scripts/package-installer.m
 
 Stelex GPT provides a German/English desktop and web workspace, local Ollama integration, accounts, saved conversations and server-managed credits. All purchase buttons open **https://discord.gg/stelex**. Purchases are manual, one-time arrangements; the application does not charge a payment card or renew subscriptions.
 
-Extract the entire Windows ZIP, install Ollama, run `ollama pull qwen2.5-coder:1.5b`, keep Ollama running, then open `Stelex GPT.exe`. `Setup-Ollama.ps1` automates installation and performs a real model request on Windows. If the selected model is unavailable, the desktop starts in a clearly labelled demo mode with free sample replies. Restart the desktop after preparing Ollama.
+Extract the entire Windows ZIP, install Ollama, run `ollama pull huihui_ai/qwen3.5-abliterated:9b`, keep Ollama running, then open `Stelex GPT.exe`. `Setup-Ollama.ps1` automates installation and performs a real model request on Windows. If the selected model is unavailable, the desktop starts in a clearly labelled demo mode with free sample replies. Restart the desktop after preparing Ollama.
 
 For development use Node.js 24.19.0+, then `npm ci`, `npm run build`, `npm test` and `npm start`. Copy `.env.example` to `.env` for real Ollama replies. The server uses port 4318 by default; its separate administrator tool is available under `/admin/` and as `Stelex Admin.exe` in the portable archive.
 

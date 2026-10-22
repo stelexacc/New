@@ -1,5 +1,8 @@
 # Prüfstand / Validation
 
+Version 1.1.0 ergänzt drei Tests zur bevorzugten Ollama-Modellwahl und einen Test für die native Ollama-Chat-API. Zusammen mit den bisherigen Backendtests sind es 16 Tests. Die Windows-Batchdatei wird in GitHub Actions mit --help ausgeführt und die PowerShell-Datei dort syntaktisch geprüft. Ein vollständiger 9B-Download und reale Modellinferenz sind hier weiterhin nicht geprüft.
+
+
 Geprüft am 21. Oktober 2026 auf Linux mit Node.js 24.19.0 und Chromium 154.
 
 ## Erfolgreich geprüft

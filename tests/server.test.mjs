@@ -131,7 +131,7 @@ test('a retried chat request returns its committed response without another prov
   let calls = 0;
   const { request, register, app } = await fixture(t, {
     demoMode: false, initialCredits: 100, aiBaseUrl: 'http://127.0.0.1:11434/v1',
-    fetchImpl: async () => { calls++; return new Response(JSON.stringify({ choices: [{ message: { content: 'Idempotent answer.' } }], usage: { prompt_tokens: 101, completion_tokens: 150 } })); },
+    fetchImpl: async () => { calls++; return new Response(JSON.stringify({ message: { content: 'Idempotent answer.' }, prompt_eval_count: 101, eval_count: 150 })); },
   });
   const session = await register();
   const body = { message: 'Generate this once.', language: 'en', requestId: randomUUID() };
@@ -235,4 +235,26 @@ test('public origin is explicit, Secure cookies follow configuration, DNS rebind
   const signup = await request('/api/auth/register', { method: 'POST', body: { email: 'tls@test.invalid', password: 'secure-cookie-password' }, headers: { Origin: 'https://stelex.example', Host: 'stelex.example' } });
   assert.equal(signup.status, 200);
   assert.match(signup.headers.get('set-cookie'), /; Secure/);
+});
+
+test('local Ollama uses native chat API and bills validated native token counts', async t => {
+  let sent;
+  const { request, register } = await fixture(t, {
+    aiBaseUrl: 'http://127.0.0.1:11434/v1', demoMode: false, initialCredits: 100,
+    models: [{ id: 'huihui_ai/qwen3.5-abliterated:9b', name: 'Local 9B' }],
+    fetchImpl: async (url, options) => {
+      assert.equal(url, 'http://127.0.0.1:11434/api/chat');
+      sent = JSON.parse(options.body);
+      return new Response(JSON.stringify({ message: { content: 'Eine lokale Antwort.' }, prompt_eval_count: 101, eval_count: 150 }));
+    },
+  });
+  const session = await register();
+  const response = await request('/api/chat', { method: 'POST', cookie: session.cookie, body: { message: 'Hallo' } });
+  assert.equal(response.status, 200);
+  assert.equal(response.data.message.content, 'Eine lokale Antwort.');
+  assert.equal(response.data.creditsCharged, 3);
+  assert.equal(response.data.balance, 97);
+  assert.equal(sent.think, false);
+  assert.equal(sent.options.num_predict, 2048);
+  assert.equal(sent.model, 'huihui_ai/qwen3.5-abliterated:9b');
 });

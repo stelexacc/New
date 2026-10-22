@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { detectOllama: probeOllama } = require('./ollama.cjs');
 
 app.setName('Stelex GPT');
 app.setAppUserModelId('com.stelex.gpt');
@@ -66,18 +67,7 @@ async function readPreferences() {
 }
 
 async function detectOllama() {
-  const baseUrl = process.env.STELEX_AI_BASE_URL || 'http://127.0.0.1:11434/v1';
-  const configuredModels = process.env.STELEX_AI_MODELS;
-  const model = configuredModels || 'qwen2.5-coder:1.5b';
-  if (process.env.STELEX_AI_BASE_URL) return { baseUrl, model, available: true };
-  try {
-    const response = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(3000) });
-    const data = await response.json();
-    const available = [...new Set((Array.isArray(data.models) ? data.models : []).map((entry) => entry.name || entry.model).filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 256))].slice(0, 50);
-    if (configuredModels) return { baseUrl, model, available: response.ok && available.length > 0 };
-    available.sort((a, b) => Number(b === model) - Number(a === model) || a.localeCompare(b));
-    return { baseUrl, model: available.length ? JSON.stringify(available.map((id) => ({ id, name: id }))) : model, available: response.ok && available.length > 0 };
-  } catch { return { baseUrl, model, available: false }; }
+  return probeOllama({ preferredModelPath: path.join(dataRoot, 'ollama-model.json') });
 }
 
 async function startLocalBackend() {

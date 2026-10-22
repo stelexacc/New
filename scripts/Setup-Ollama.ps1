@@ -1,4 +1,4 @@
-param([string]$Model = "qwen2.5-coder:1.5b")
+param([string]$Model = "huihui_ai/qwen3.5-abliterated:9b")
 $ErrorActionPreference = "Stop"
 
 Write-Host "Stelex GPT | Ollama setup / Einrichtung" -ForegroundColor Red

@@ -1,8 +1,7 @@
 name: Build Stelex GPT Windows release
-
 on:
   push:
-    branches: [stelex-gpt-v1.0.0]
+    branches: ['stelex-gpt-v*']
     paths:
       - '.github/workflows/windows-release.yml'
       - 'scripts/**'
@@ -11,22 +10,38 @@ on:
       - 'server/**'
       - 'desktop/**'
       - 'admin/**'
+      - 'tests/**'
       - 'package*.json'
+      - '.gitattributes'
       - 'vite.config.js'
       - 'index.html'
   workflow_dispatch:
-
 permissions:
-  contents: write
-
+  contents: read
 concurrency:
-  group: stelex-gpt-windows-v1
+  group: stelex-gpt-windows-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
+  windows-setup-check:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows setup entry points
+        shell: pwsh
+        run: |
+          cmd.exe /d /c scripts\Setup-Stelex-Model.bat --help
+          if ($LASTEXITCODE -ne 0) { throw 'Batch setup help failed.' }
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Ollama.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
   release:
+    needs: windows-setup-check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
@@ -39,22 +54,26 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nsis p7zip-full
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Run backend tests
+      - name: Run backend and model-selection tests
         run: npm test
-      - name: Build Windows app and single-file setup
+      - name: Build Windows app and setup
         run: |
+          VERSION=$(node -p "require('./package.json').version")
           npm run package:windows
           node scripts/package-installer.mjs
-          7z t artifacts/Stelex-GPT-Setup-1.0.0.exe
-          (cd artifacts && sha256sum --check Stelex-GPT-Setup-1.0.0.exe.sha256)
-        working-directory: .
-      - name: Publish installer
+          7z t "artifacts/Stelex-GPT-Setup-$VERSION.exe"
+          (cd artifacts && sha256sum --check "Stelex-GPT-Setup-$VERSION.exe.sha256")
+          cp scripts/Setup-Stelex-Model.bat artifacts/Setup-Stelex-Model.bat
+          (cd artifacts && sha256sum Setup-Stelex-Model.bat > Setup-Stelex-Model.bat.sha256)
+      - name: Publish installer and model setup
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if ! gh release view v1.0.0 >/dev/null 2>&1; then
-            gh release create v1.0.0 --target "$GITHUB_SHA" --title "Stelex GPT 1.0.0" --draft --notes "Stelex GPT Windows setup. Install Ollama and a model for real AI replies."
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Stelex GPT $VERSION" --draft --notes-file "docs/RELEASE-$VERSION.md"
           fi
-          gh release upload v1.0.0 artifacts/Stelex-GPT-Setup-1.0.0.exe artifacts/Stelex-GPT-Setup-1.0.0.exe.sha256 --clobber
-          gh release edit v1.0.0 --draft=false --latest
+          gh release upload "$TAG" "artifacts/Stelex-GPT-Setup-$VERSION.exe" "artifacts/Stelex-GPT-Setup-$VERSION.exe.sha256" artifacts/Setup-Stelex-Model.bat artifacts/Setup-Stelex-Model.bat.sha256 --clobber
+          gh release edit "$TAG" --draft=false --latest

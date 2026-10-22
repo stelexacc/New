@@ -357,15 +357,21 @@ export async function createApp(options = {}) {
               content = language === 'de' ? 'Dies ist der Stelex-GPT-Demomodus. Deine Nachricht wurde gespeichert; es wurde kein KI-Modell aufgerufen und es werden keine Credits abgezogen.\n\nFür echte Antworten starte Ollama mit einem installierten Modell oder verbinde einen konfigurierten Stelex-Server. Danach kannst du hier programmieren, Texte schreiben und Ideen ausarbeiten.' : 'This is the Stelex GPT demo mode. Your message has been saved; no AI model was called and no credits are charged.\n\nFor real responses, start Ollama with an installed model or connect a configured Stelex server. Then use this chat for coding, writing, and creative work.';
             } else {
               let result;
+              const nativeOllama = providerKind === 'ollama';
+              const providerUrl = nativeOllama ? new URL('/api/chat', baseUrl).href : `${baseUrl}/chat/completions`;
+              const providerBody = nativeOllama
+                ? { model: model.upstreamModel || model.id, messages: requestMessages, stream: false, think: false, options: { num_predict: maxOutputTokens } }
+                : { model: model.upstreamModel || model.id, messages: requestMessages, max_tokens: maxOutputTokens, stream: false };
               try {
-                result = await fetchProvider(`${baseUrl}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.aiApiKey ? { Authorization: `Bearer ${options.aiApiKey}` } : {}) }, body: JSON.stringify({ model: model.upstreamModel || model.id, messages: requestMessages, max_tokens: maxOutputTokens, stream: false }), signal: AbortSignal.timeout(options.providerTimeoutMs ?? 120_000) });
+                result = await fetchProvider(providerUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.aiApiKey ? { Authorization: `Bearer ${options.aiApiKey}` } : {}) }, body: JSON.stringify(providerBody), signal: AbortSignal.timeout(options.providerTimeoutMs ?? (nativeOllama ? 300_000 : 120_000)) });
               } catch { providerObservation = { reachable: false, checkedAt: iso() }; throw new HttpError(503, 'The AI provider could not be reached. Credits were returned.', 'PROVIDER_UNAVAILABLE'); }
               if (!result.ok) { await result.body?.cancel(); throw new HttpError(502, `The AI provider returned HTTP ${result.status}. Credits were returned.`, 'PROVIDER_ERROR'); }
               let payload;
               try { payload = await result.json(); }
               catch { throw new HttpError(502, 'The AI provider returned invalid JSON. Credits were returned.', 'INVALID_PROVIDER_RESPONSE'); }
-              content = payload.choices?.[0]?.message?.content;
-              inputTokens = payload.usage?.prompt_tokens; outputTokens = payload.usage?.completion_tokens;
+              content = nativeOllama ? payload.message?.content : payload.choices?.[0]?.message?.content;
+              inputTokens = nativeOllama ? payload.prompt_eval_count : payload.usage?.prompt_tokens;
+              outputTokens = nativeOllama ? payload.eval_count : payload.usage?.completion_tokens;
               if (typeof content !== 'string' || !content.trim() || content.length > 1_000_000 || !integer(inputTokens, 0, maxInputTokens) || !integer(outputTokens, 0, maxOutputTokens)) throw new HttpError(502, 'The AI provider returned an invalid response or missing usage. Credits were returned.', 'INVALID_PROVIDER_RESPONSE');
               charge = Math.ceil((inputTokens + outputTokens) / TOKENS_PER_CREDIT);
               providerObservation = { reachable: true, checkedAt: iso() };
