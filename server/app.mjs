@@ -1,4 +1,7 @@
 import http from 'node:http';
+import {importLegacyAdmin} from './legacy-admin.mjs';
+import { ollamaChat } from './ollama.mjs';
+import { migrateWelcomeGift } from './welcome-migration.mjs';
 import { adminVerifier } from './admin-auth.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, randomInt, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -122,6 +125,7 @@ export async function createApp(options = {}) {
     CREATE INDEX IF NOT EXISTS usage_user ON usage(userId);
   `);
   const plans = initializePlans(db);
+  importLegacyAdmin(db,options.legacyAdminDb);
   const prompts = initializePrompts(db);
   const attachments = initializeAttachments(db);
   const quotasEnabled = options.quotasEnabled !== false;
@@ -133,7 +137,8 @@ export async function createApp(options = {}) {
     db.exec('DELETE FROM reservations; COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
   const demoMode = options.demoMode ?? !options.aiBaseUrl;
-  const initialCredits = options.initialCredits ?? (quotasEnabled ? 0 : demoMode ? 500 : 0);
+  if(options.removeLegacyWelcomeGift) migrateWelcomeGift(db);
+  const initialCredits = options.initialCredits ?? 0;
   if (!integer(initialCredits, 0, 1_000_000_000)) throw new Error('Invalid initialCredits');
   const baseUrl = options.aiBaseUrl?.replace(/\/+$/, '');
   const models = options.models?.length ? options.models : demoMode
@@ -149,7 +154,9 @@ export async function createApp(options = {}) {
     sendVerification = ({email,name,code}) => mailTransport.sendMail({from:smtp.from,to:email,subject:'Stelex – E-Mail bestätigen',text:`Hallo ${name},\n\ndein Stelex-Bestätigungscode: ${code}\n\nDer Code gilt 10 Minuten. Falls du kein Konto erstellt hast, ignoriere diese Nachricht.`});
   }
   const verificationEnabled = typeof sendVerification === 'function';
-  const verifyAdmin = adminVerifier(options);
+  let verifyAdmin = adminVerifier(options);
+  const progress=new Map();
+  const setProgress=(userId,requestId,update)=>{if(!requestId)return;const key=`${userId}:${requestId}`;for(const [id,value] of progress)if(Date.now()-value.updatedAt>600000)progress.delete(id);if(progress.size>512)progress.delete(progress.keys().next().value);progress.set(key,{...progress.get(key),...update,updatedAt:Date.now()});};
   const rateLimits = new Map(); const busyUsers = new Set();
   const providerScheduler=createProviderScheduler(options.providerConcurrency ?? 2);
   const providerShutdown=new AbortController();
@@ -256,10 +263,22 @@ export async function createApp(options = {}) {
         }
         if (request.headers['sec-fetch-site'] === 'cross-site') throw new HttpError(403, 'Cross-site requests are not allowed.', 'ORIGIN_REJECTED');
       }
+      if(path.startsWith('/api/desktop/')) {
+        if(!options.desktopKey || request.headers.authorization!==`Bearer ${options.desktopKey}` || !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(request.socket.remoteAddress))throw new HttpError(403,'Local service control denied.','FORBIDDEN');
+        if(method==='POST' && path==='/api/desktop/reload-admin'){
+          const config=JSON.parse(readFileSync(options.adminAuthFile,'utf8'));
+          verifyAdmin=adminVerifier({adminCodeHash:config.codeHash});return json(200,{ok:true});
+        }
+        if(method==='POST' && path==='/api/desktop/lease'){const body=await readJson(request);options.desktopLease?.(body.clientId,body.release===true);return json(200,{ok:true});}
+        throw new HttpError(404,'Not found.','NOT_FOUND');
+      }
+      if(method==='GET' && path==='/api/chat/status'){
+        const user=currentUser(request);const state=progress.get(`${user.id}:${url.searchParams.get('requestId')}`);return json(200,state||{stage:'preparing'});
+      }
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
-        return json(200, { ok: true, demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
+        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.4.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
       }
       if (method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(path)) {
         limit(request, 'auth-ip', 300);
@@ -518,7 +537,7 @@ export async function createApp(options = {}) {
             if (!conversation) throw new HttpError(404, 'Conversation not found.', 'NOT_FOUND');
           }
           const history = conversation ? db.prepare('SELECT id,role,content FROM messages WHERE conversationId=? ORDER BY rowid DESC LIMIT 24').all(conversation.id).reverse() : [];
-          while (history.length && history.reduce((n, item) => n + item.content.length, 0) > 48000) history.splice(0, 2);
+          while (history.length && history.reduce((n, item) => n + item.content.length, 0) > (options.aiTransport==='ollama-native' ? (plan.id==='free'?12000:24000) : 48000)) history.splice(0, 2);
           const promptSettings=requestedPrompts?.override ? requestedPrompts : requestedPrompts ? {...prompts.readPreferences(user.id),override:false} : prompts.readConversation(user.id,conversation?.id);
           const systemMessage=prompts.buildMessages(promptSettings,language);
           const promptHash=hash(systemMessage.content);
@@ -528,12 +547,14 @@ export async function createApp(options = {}) {
           const currentMessage={role:'user',content:providerContent(message.trim(),uploaded)};
           const requestMessages = [systemMessage, ...historyItems.map(item=>item.message), currentMessage];
           const maxOutputTokens = Math.min(options.maxOutputTokens ?? plan.maxOutputTokens,plan.maxOutputTokens,model.maxOutputTokens ?? 32768);
-          const maxInputTokens = 64+estimatedMessageTokens(systemMessage)+historyItems.reduce((sum,item)=>sum+estimatedMessageTokens(item.message,item.attachments),0)+estimatedMessageTokens(currentMessage,uploaded);
+          const estimatedInput = 64+estimatedMessageTokens(systemMessage)+historyItems.reduce((sum,item)=>sum+estimatedMessageTokens(item.message,item.attachments),0)+estimatedMessageTokens(currentMessage,uploaded);
+          const maxInputTokens = options.aiTransport==='ollama-native' ? Math.max(estimatedInput,512+requestMessages.reduce((sum,item)=>sum+Buffer.byteLength(typeof item.content==='string'?item.content:JSON.stringify(item.content)),0)) : estimatedInput;
           const multiplier=model.multiplier ?? 1;
           const reservation = demoMode ? 0 : Math.ceil((maxInputTokens + maxOutputTokens)*multiplier / TOKENS_PER_CREDIT);
           let heldCredits=0;let heldQuota=0;
           if (!demoMode && !baseUrl) throw new HttpError(503, 'AI provider is not configured.', 'PROVIDER_UNAVAILABLE');
           busyUsers.add(user.id);
+          setProgress(user.id,requestId,{stage:'queued',startedAt:Date.now(),preview:''});
           const reservationId = randomUUID();
           let reserved = false; let releaseProvider;
           try {
@@ -555,8 +576,17 @@ export async function createApp(options = {}) {
               let result;
               try { releaseProvider=await providerScheduler.acquire(plan.priority,AbortSignal.timeout(options.providerQueueTimeoutMs ?? 120_000)); }
               catch (error) { throw new HttpError(503,error.code === 'PROVIDER_QUEUE_FULL' ? error.message : 'The AI queue wait timed out. Please retry shortly.',error.code === 'PROVIDER_QUEUE_FULL' ? error.code : 'PROVIDER_QUEUE_TIMEOUT'); }
+              setProgress(user.id,requestId,{stage:'loading'});
+              if(options.aiTransport==='ollama-native'){
+                try {
+                  const answer=await ollamaChat({baseUrl,fetchImpl:fetchProvider,model:model.upstreamModel||model.id,messages:requestMessages,maxOutputTokens,signal:AbortSignal.any([providerShutdown.signal,AbortSignal.timeout(options.providerTimeoutMs??600000)]),onProgress:update=>setProgress(user.id,requestId,update)});
+                  content=answer.content;inputTokens=answer.inputTokens;outputTokens=answer.outputTokens;
+                  // Reserve a conservative upper bound separately from tokenizer estimates.
+                  if(inputTokens>maxInputTokens || outputTokens>maxOutputTokens)throw Object.assign(new Error('Model usage exceeds the reserved context.'),{code:'INVALID_PROVIDER_RESPONSE'});
+                }catch(error){throw new HttpError(error.code==='PROVIDER_UNAVAILABLE'?503:502,error.message,error.code||'PROVIDER_ERROR');}
+              }else{
               try {
-                result = await fetchProvider(`${baseUrl}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.aiApiKey ? { Authorization: `Bearer ${options.aiApiKey}` } : {}) }, body: JSON.stringify({ model: model.upstreamModel || model.id, messages: requestMessages, max_tokens: maxOutputTokens, stream: false, ...(model.reasoningSupported ? {reasoning_effort:plan.reasoningEffort} : {}) }), signal: AbortSignal.any([providerShutdown.signal,AbortSignal.timeout(options.providerTimeoutMs ?? 120_000)]) });
+                result = await fetchProvider(`${baseUrl}/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(options.aiApiKey ? { Authorization: `Bearer ${options.aiApiKey}` } : {}) }, body: JSON.stringify({ model: model.upstreamModel || model.id, messages: requestMessages, max_tokens: maxOutputTokens, stream: false, ...(model.reasoningSupported ? {reasoning_effort:plan.reasoningEffort} : {}) }), signal: AbortSignal.any([providerShutdown.signal,AbortSignal.timeout(options.providerTimeoutMs ?? 600_000)]) });
               } catch { providerObservation = { reachable: false, checkedAt: iso() }; throw new HttpError(503, 'The AI provider could not be reached. Credits were returned.', 'PROVIDER_UNAVAILABLE'); }
               if (!result.ok) { await result.body?.cancel(); throw new HttpError(502, `The AI provider returned HTTP ${result.status}. Credits were returned.`, 'PROVIDER_ERROR'); }
               let payload;
@@ -565,6 +595,7 @@ export async function createApp(options = {}) {
               content = payload.choices?.[0]?.message?.content;
               inputTokens = payload.usage?.prompt_tokens; outputTokens = payload.usage?.completion_tokens;
               if (typeof content !== 'string' || !content.trim() || content.length > 1_000_000 || !integer(inputTokens, 0, maxInputTokens) || !integer(outputTokens, 0, maxOutputTokens)) throw new HttpError(502, 'The AI provider returned an invalid response or missing usage. Credits were returned.', 'INVALID_PROVIDER_RESPONSE');
+              }
               charge = Math.ceil((inputTokens + outputTokens)*multiplier / TOKENS_PER_CREDIT);
               providerObservation = { reachable: true, checkedAt: iso() };
             }
@@ -597,8 +628,10 @@ export async function createApp(options = {}) {
               return result;
             });
             reserved = false;
+            setProgress(user.id,requestId,{stage:'done',preview:''});
             return json(200, completed);
           } finally {
+            setProgress(user.id,requestId,{stage:'finished',preview:''});
             releaseProvider?.();
             if (reserved) transaction(() => {
               const held=db.prepare('SELECT * FROM reservations WHERE id=?').get(reservationId);

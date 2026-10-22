@@ -12,7 +12,7 @@ if (adminEnabled && !adminCodeHash) {
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 let adminToken = adminEnabled && !adminCodeHash ? process.env.STELEX_ADMIN_TOKEN : undefined;
-if (adminEnabled && !adminCodeHash && !adminToken) {
+if (adminEnabled && !adminCodeHash && !adminToken && !process.env.STELEX_DESKTOP_KEY) {
   const tokenPath = resolve(dataDir, 'admin-token.txt');
   try { adminToken = readFileSync(tokenPath, 'utf8').trim(); }
   catch (error) {
@@ -31,7 +31,11 @@ if (process.env.STELEX_AI_MODELS) {
 const demoMode = process.env.STELEX_DEMO_MODE === undefined ? !process.env.STELEX_AI_BASE_URL : process.env.STELEX_DEMO_MODE === 'true';
 const port = Number(process.env.STELEX_PORT ?? 4318);
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('STELEX_PORT must be 0–65535.');
+const leases=new Map();let lastLease=Date.now();
 const app = await createApp({
+  legacyAdminDb:process.env.STELEX_LEGACY_ADMIN_DB,serviceId:process.env.STELEX_SERVICE_ID,desktopKey:process.env.STELEX_DESKTOP_KEY,adminAuthFile:resolve(dataDir,'admin-auth.json'),
+  desktopLease:(id,release)=>{if(typeof id!=='string'||id.length>100)return;if(release)leases.delete(id);else leases.set(id,Date.now());lastLease=Date.now();},
+  adminDir:process.env.STELEX_ADMIN_DIR,aiTransport:process.env.STELEX_AI_TRANSPORT,removeLegacyWelcomeGift:process.env.STELEX_REMOVE_WELCOME==='true',
   dbPath: resolve(dataDir, 'stelex.sqlite'), adminToken, adminCodeHash, adminEnabled, demoMode, models,
   aiBaseUrl: process.env.STELEX_AI_BASE_URL, aiApiKey: process.env.STELEX_AI_API_KEY,
   initialCredits: process.env.STELEX_INITIAL_CREDITS === undefined ? undefined : Number(process.env.STELEX_INITIAL_CREDITS),
@@ -46,7 +50,10 @@ const app = await createApp({
   } : undefined,
 });
 const address = await app.listen(port, process.env.STELEX_HOST || '127.0.0.1');
+if(process.env.STELEX_SERVICE_RECORD && process.env.STELEX_DESKTOP_KEY)writeFileSync(process.env.STELEX_SERVICE_RECORD,JSON.stringify({url:address,key:process.env.STELEX_DESKTOP_KEY,legacyAdminDb:process.env.STELEX_LEGACY_ADMIN_DB,serviceId:process.env.STELEX_SERVICE_ID,pid:process.pid}),{mode:0o600});
 console.log(`STELEX_READY=${address}`);
+if(process.env.STELEX_DESKTOP_KEY){const timer=setInterval(async()=>{for(const[id,at]of leases)if(Date.now()-at>45000)leases.delete(id);if(!leases.size && Date.now()-lastLease>45000){clearInterval(timer);await app.close();process.exit(0);}},10000);timer.unref();}
+
 let closing = false;
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, async () => {
   if (closing) return; closing = true;

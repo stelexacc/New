@@ -7,7 +7,7 @@ const path = require('node:path');
 const { canonicalDirectory, saveArtifact } = require('./output-files.cjs');
 
 const role = require('../package.json').stelexRole;
-const isAdminLaunch = role === 'admin' || (!role && (/stelex admin/i.test(path.basename(process.execPath)) || process.argv.includes('--admin')));
+const isAdminLaunch = global[Symbol.for('stelex.admin.unlocked')] === true || role === 'admin' || (!role && (/stelex admin/i.test(path.basename(process.execPath)) || process.argv.includes('--admin')));
 app.setName(isAdminLaunch ? 'Stelex Admin' : 'Stelex GPT');
 app.setAppUserModelId(isAdminLaunch ? 'com.stelex.admin' : 'com.stelex.gpt');
 app.setPath('userData', path.join(app.getPath('appData'), isAdminLaunch ? 'Stelex Admin' : 'Stelex GPT'));
@@ -15,7 +15,7 @@ const appRoot = path.resolve(__dirname, '..');
 const dataRoot = app.getPath('userData');
 const windows = new Set();
 const adminWindows = new WeakMap();
-let backend;
+let backend;let sharedService;
 let activeUrl;
 let localUrl;
 let settings = {};
@@ -33,7 +33,7 @@ async function finishSmoke(result) {
   try {
     await fs.mkdir(path.dirname(smokeFile), { recursive: true });
     await fs.writeFile(smokeFile, `${JSON.stringify(result)}\n`, { mode: 0o600 });
-  } finally { quitting = true; backend?.kill(); if (result.ok) app.quit(); else app.exit(1); }
+  } finally { quitting = true; backend?.kill();sharedService?.release(); if (result.ok) app.quit(); else app.exit(1); }
 }
 async function inspectSmoke(window, admin) {
   if (!smokeFile || smokeFinished) return;
@@ -84,7 +84,7 @@ async function openExternal(value) {
 
 async function readSettings() {
   try {
-    const saved = JSON.parse(await fs.readFile(path.join(dataRoot, 'connection.json'), 'utf8'));
+    const saved = JSON.parse(await fs.readFile(path.join(app.getPath('appData'),'Stelex GPT','connection.json'), 'utf8'));
     return saved.serverUrl ? { serverUrl: parseServerUrl(saved.serverUrl) } : {};
   } catch { return {}; }
 }
@@ -185,67 +185,11 @@ async function detectOllama() {
 async function startLocalBackend() {
   if (localUrl) return localUrl;
   await fs.mkdir(dataRoot, { recursive: true, mode: 0o700 });
-  let adminCodeHash;
-  if (isAdminLaunch) {
-    const authFile = path.join(dataRoot, 'server', 'admin-auth.json');
-    await fs.mkdir(path.dirname(authFile), { recursive: true, mode: 0o700 });
-    try { adminCodeHash = JSON.parse(await fs.readFile(authFile, 'utf8')).codeHash; }
-    catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-      try {
-        const auth = await fs.readFile(path.join(process.resourcesPath, 'owner-admin-auth.json'), 'utf8');
-        adminCodeHash = JSON.parse(auth).codeHash;
-        await fs.writeFile(authFile, auth, { mode:0o600, flag:'wx' });
-      } catch (failure) {
-        if (!smokeFile) throw new Error('Private Admin-Konfiguration fehlt. Das Kundenpaket enthaelt keinen Admin-Zugang.');
-      }
-    }
-  }
-  const ollama = await detectOllama();
-  const runtime = app.isPackaged
-    ? path.join(process.resourcesPath, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node')
-    : process.env.STELEX_NODE_PATH || 'node';
-  const childEnv = {
-    ...process.env,
-    STELEX_HOST: '127.0.0.1',
-    STELEX_PORT: '0',
-    STELEX_DATA_DIR: path.join(dataRoot, 'server'),
-    STELEX_ADMIN_TOKEN: '',
-    STELEX_ADMIN_DISABLED: isAdminLaunch ? 'false' : 'true',
-    STELEX_ADMIN_CODE_HASH: adminCodeHash || '',
-    STELEX_AI_BASE_URL: ollama.baseUrl,
-    STELEX_AI_MODELS: ollama.model,
-    STELEX_DEMO_MODE: smokeFile && process.env.STELEX_DEMO_MODE === 'true' ? 'true' : ollama.available ? 'false' : 'true',
-    STELEX_INITIAL_CREDITS: process.env.STELEX_INITIAL_CREDITS || '0',
-  };
-  delete childEnv.ELECTRON_RUN_AS_NODE;
-  backend = spawn(runtime, [path.join(appRoot, 'server', 'index.mjs')], {
-    cwd: appRoot, env: childEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  backend.stderr.on('data', (chunk) => {
-    // Runtime errors stay in the local terminal; credentials are never logged.
-    if (!app.isPackaged) process.stderr.write(chunk);
-  });
-  return await new Promise((resolve, reject) => {
-    let buffer = '';
-    const timeout = setTimeout(() => reject(new Error('The local server did not become ready within 30 seconds.')), 30_000);
-    backend.on('error', (error) => { clearTimeout(timeout); reject(error); });
-    backend.on('exit', (code) => {
-      clearTimeout(timeout);
-      if (!localUrl) reject(new Error(`The local server exited (${code}).`));
-      else if (!quitting) dialog.showErrorBox('Stelex GPT', 'The local server stopped. Restart Stelex GPT to reconnect.');
-    });
-    backend.stdout.on('data', (chunk) => {
-      buffer += chunk.toString('utf8');
-      if (buffer.length > 64_000) buffer = buffer.slice(-16_000);
-      const match = buffer.match(/STELEX_READY=(http:\/\/127\.0\.0\.1:\d+)/);
-      if (match && !localUrl) {
-        localUrl = parseServerUrl(match[1]);
-        clearTimeout(timeout);
-        resolve(localUrl);
-      }
-    });
-  });
+  const ollama=await detectOllama();
+  const runtime=app.isPackaged ? path.join(process.resourcesPath,'runtime',process.platform==='win32'?'node.exe':'node') : process.env.STELEX_NODE_PATH || 'node';
+  const root=path.join(app.getPath('appData'),'Stelex GPT');
+  sharedService=await require('./shared-backend.cjs').connectShared({root,runtime,appRoot,admin:isAdminLaunch,env:{...process.env,STELEX_LEGACY_ADMIN_DB:path.join(app.getPath('appData'),'Stelex Admin','server','stelex.sqlite'),STELEX_HOST:'127.0.0.1',STELEX_PORT:'0',STELEX_AI_BASE_URL:ollama.baseUrl,STELEX_AI_MODELS:ollama.model,STELEX_AI_TRANSPORT:process.env.STELEX_AI_BASE_URL?'openai-compatible':'ollama-native',STELEX_PROVIDER_CONCURRENCY:'1',STELEX_DEMO_MODE:smokeFile && process.env.STELEX_DEMO_MODE==='true'?'true':'false'}});
+  localUrl=parseServerUrl(sharedService.url);return localUrl;
 }
 
 function createWindow(admin = false) {
@@ -314,7 +258,7 @@ function buildMenu() {
       { label: 'Lokaler Modus / Local mode', click: async () => {
         try {
           settings = {};
-          await fs.writeFile(path.join(dataRoot, 'connection.json'), `${JSON.stringify(settings)}\n`, { mode: 0o600 });
+          await fs.writeFile(path.join(app.getPath('appData'),'Stelex GPT','connection.json'), `${JSON.stringify(settings)}\n`, { mode: 0o600 });
           activeUrl = await startLocalBackend();
           for (const window of windows) await window.loadURL(`${activeUrl}${adminWindows.get(window) ? '/admin/' : '/'}`);
         } catch (error) { dialog.showErrorBox('Stelex GPT', error.message); }
@@ -356,7 +300,7 @@ else {
       const health = await response.json();
       if (!response.ok || !health.ok || !Array.isArray(health.models)) throw new Error('The server did not return a valid Stelex health response.');
       settings = next === localUrl ? {} : { serverUrl: next };
-      await fs.writeFile(path.join(dataRoot, 'connection.json'), `${JSON.stringify(settings)}\n`, { mode: 0o600 });
+      await fs.writeFile(path.join(app.getPath('appData'),'Stelex GPT','connection.json'), `${JSON.stringify(settings)}\n`, { mode: 0o600 });
       activeUrl = next;
       setTimeout(() => { for (const window of windows) void window.loadURL(`${next}${adminWindows.get(window) ? '/admin/' : '/'}`); }, 100);
     });
@@ -419,5 +363,5 @@ else {
     app.quit();
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('before-quit', () => { quitting = true; backend?.kill(); });
+  app.on('before-quit', () => { quitting = true; backend?.kill();sharedService?.release(); });
 }

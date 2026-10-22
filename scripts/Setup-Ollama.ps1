@@ -111,18 +111,7 @@ try {
     $Body = @{ model = $Model; messages = @(@{ role = "user"; content = "Reply briefly with OK." }); stream = $false; think = $false; options = @{ num_predict = 32 } } | ConvertTo-Json -Depth 6
     $Response = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/chat" -Method Post -ContentType "application/json" -Body ([System.Text.Encoding]::UTF8.GetBytes($Body)) -TimeoutSec 900
     if (-not $Response.message -or [string]::IsNullOrWhiteSpace([string]$Response.message.content)) { throw "The model returned no reply. / Das Modell hat keine Antwort geliefert." }
-    Write-Host "Testing the Stelex-compatible API / Stelex-Schnittstelle wird geprueft ..."
-    try {
-        $CompatibleBody = @{ model = $Model; messages = @(@{ role = "user"; content = "Reply briefly with OK." }); max_tokens = 1024; stream = $false } | ConvertTo-Json -Depth 6
-        $Compatible = Invoke-RestMethod -Uri "http://127.0.0.1:11434/v1/chat/completions" -Method Post -ContentType "application/json" -Body ([System.Text.Encoding]::UTF8.GetBytes($CompatibleBody)) -TimeoutSec 900
-        $Choices = @($Compatible.choices)
-        if ($Choices.Count -lt 1 -or [string]::IsNullOrWhiteSpace([string]($Choices[0].message.content))) { throw "The compatible API returned no answer / Die kompatible API hat keine Antwort geliefert." }
-        if (-not (Test-StelexUsageCount ($Compatible.usage.prompt_tokens)) -or -not (Test-StelexUsageCount ($Compatible.usage.completion_tokens)) -or $Compatible.usage.completion_tokens -gt 1024) {
-            throw "The compatible API returned invalid token usage / Die kompatible API hat ungueltige Verbrauchsdaten geliefert."
-        }
-    } catch {
-        throw ("The native Ollama test worked, but the Stelex-compatible API test failed / Der Ollama-Test war erfolgreich, aber die Stelex-Schnittstelle funktioniert nicht: " + $_.Exception.Message)
-    }
+    if (-not (Test-StelexUsageCount ($Response.prompt_eval_count)) -or -not (Test-StelexUsageCount ($Response.eval_count))) { throw "Ollama returned no valid usage counts / Verbrauchsdaten fehlen." }
     Write-Host "Installation complete. / Installation abgeschlossen." -ForegroundColor Green
     Write-Host "Model verified: $Model. You can now start Stelex GPT.exe. / Modell geprueft. Jetzt Stelex GPT.exe starten."
     exit 0

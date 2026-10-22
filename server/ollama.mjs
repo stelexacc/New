@@ -1,0 +1,17 @@
+// Native Ollama streaming: the answer is streamed; private reasoning is never exposed.
+export async function ollamaChat({baseUrl,fetchImpl=fetch,model,messages,maxOutputTokens,signal,onProgress=()=>{}}){
+  const origin=new URL(baseUrl).origin;
+  const converted=messages.map(item=>{if(typeof item.content==='string')return item;const text=item.content.filter(p=>p.type==='text').map(p=>p.text).join('\n');const images=item.content.filter(p=>p.type==='image_url').map(p=>p.image_url.url.split(',')[1]);return{role:item.role,content:text,...(images.length?{images}:{})};});
+  const failure=(code,message)=>Object.assign(new Error(message),{code});
+  let response;
+  try{response=await fetchImpl(`${origin}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:converted,stream:true,think:false,keep_alive:'15m',options:{num_predict:maxOutputTokens,num_ctx:8192}}),signal});}
+  catch(error){throw failure(signal?.aborted?'PROVIDER_TIMEOUT':'PROVIDER_UNAVAILABLE',signal?.aborted?'Das Modell hat zu lange gebraucht. Keine Credits abgezogen.':'Ollama ist nicht erreichbar. Ollama starten und erneut senden. Keine Credits abgezogen.');}
+  if(!response.ok){let detail='';try{detail=(await response.json()).error||'';}catch{}throw failure(response.status===404?'MODEL_NOT_INSTALLED':'PROVIDER_ERROR',response.status===404?`Modell ${model} fehlt in Ollama. „Modell einrichten“ ausführen.`:`Ollama meldet HTTP ${response.status}: ${detail.slice(0,300)}. Keine Credits abgezogen.`);}
+  let buffer='',content='',done,inputTokens,outputTokens,thinking=false;
+  const consume=line=>{if(!line.trim())return;let part;try{part=JSON.parse(line);}catch{throw failure('INVALID_PROVIDER_RESPONSE','Ollama hat einen ungültigen Datenstrom geliefert. Keine Credits abgezogen.');}if(part.error)throw failure('PROVIDER_ERROR',String(part.error).slice(0,300));if(part.message?.thinking && !thinking){thinking=true;onProgress({stage:'thinking'});}if(part.message?.content){content+=part.message.content;if(content.length>1000000)throw failure('INVALID_PROVIDER_RESPONSE','Antwort zu groß.');onProgress({stage:'generating',preview:content.slice(-16000),characters:content.length});}if(part.done){done=true;inputTokens=part.prompt_eval_count;outputTokens=part.eval_count;}};
+  try{const decoder=new TextDecoder();for await(const chunk of response.body){buffer+=decoder.decode(chunk,{stream:true});let at;while((at=buffer.indexOf('\n'))>=0){consume(buffer.slice(0,at));buffer=buffer.slice(at+1);}if(buffer.length>2000000)throw failure('INVALID_PROVIDER_RESPONSE','Ollama-Datenblock zu groß.');}buffer+=decoder.decode();if(buffer.trim())consume(buffer);}
+  catch(error){if(signal?.aborted)throw failure('PROVIDER_TIMEOUT','Das Modell hat zu lange gebraucht. Keine Credits abgezogen.');throw error;}
+  if(!content.trim())throw failure('AI_EMPTY_RESPONSE','Ollama hat keine Antwort ausgegeben. Schneller Antwortmodus ist aktiv; Modellinstallation prüfen. Keine Credits abgezogen.');
+  if(!done || !Number.isSafeInteger(inputTokens)||inputTokens<0||!Number.isSafeInteger(outputTokens)||outputTokens<0)throw failure('INVALID_PROVIDER_RESPONSE','Ollama hat keine vollständigen Verbrauchsdaten geliefert. Keine Credits abgezogen.');
+  return{content,inputTokens,outputTokens};
+}

@@ -1,5 +1,7 @@
-# Prüfstand Kunden-Release 1.3.1
+# Prüfstand 1.4.0
 
-Die Ausgangsversion bestand 52 automatisierte Tests und 31 Browser-Prüfgruppen, einschließlich privater Betreiberabläufe. Dieser öffentliche Kunden-Branch enthält das Betreiber-Frontend und den privaten Launcher nicht. Seine Pipeline wiederholt die 52 Backend-/Dateisystem-/Authentifizierungstests und Kunden-Browserprüfungen, baut die ZIP und das gebrandete Setup und prüft dann den portablen sowie installierten Windows-Start im Demomodus.
+63 automatisierte Prüfungen bestanden lokal, einschließlich nativer Ollama-Streaming-Simulation, 60 typischer Anfragen über eine simulierte Stunde mit Chatverlauf, Rückerstattung bei Fehlern, Start ohne Kaufguthaben, Erhalt gekaufter Credits bei Geschenk-Korrektur, Code-Einlösung im gemeinsamen App/Admin-Dienst, Einmaligkeit, verschlüsselter Admin-Sperre und Windows-Dateipfadnormalisierung.
 
-Erst nach diesen Prüfungen wird der Release öffentlich. Es werden keine privaten Hash-Konfigurationen, Tokens, Datenbanken, Testkonten oder Betreiber-EXEs hochgeladen. Vollständige Ollama-Installation und echte Modellinferenz erfolgen auf dem Zielrechner. SMTP und ein zentraler HTTPS-Kundenserver müssen separat eingerichtet werden. Die Windows-Pakete sind unsigniert.
+Zusätzlich: vorhandene Browser-Prüfungen für Anmeldung, Kontingente, Code-Einlösung, Dateianhänge und Einstellungen; eigener Chromium-Test für echte Statuswechsel aus einem simulierten Provider-Datenstrom, Laufzeitanzeige und Antwortvorschau ohne interne Gedankengänge. Die Oberfläche verwendet weiterhin das vorhandene Design.
+
+Die Release-Pipeline wiederholt Regressionstests und Browserprüfungen, baut die portable ZIP und das NSIS-Setup und startet beide Kundenvarianten sowie die installierte Admin-Sperre auf echtem Windows. Erst danach wird der Release veröffentlicht. Die richtige Entschlüsselung wird lokal geprüft; der private Code wird nicht im CI verwendet. GitHub prüft keinen echten lokalen 9B-Modellbetrieb; Setup-Ollama.ps1 prüft ihn auf dem Ziel-PC. Windows-Pakete sind unsigniert.

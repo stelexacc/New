@@ -25,14 +25,15 @@ async function unlock(event,code) {
   try {
     const bundle=JSON.parse(await fs.readFile(bundleFile,'utf8'));
     const privateData=open(bundle,code);
-    const adminDir=path.join(__dirname,'..','admin');
+    const sharedProfile=path.join(app.getPath('appData'),'Stelex GPT');
+    const adminDir=path.join(sharedProfile,'admin-ui');
     await fs.mkdir(adminDir,{recursive:true,mode:0o700});
     for (const [name,content] of Object.entries(privateData.files)) await fs.writeFile(path.join(adminDir,name),content,{mode:0o600});
     const auth=JSON.stringify({codeHash:privateData.codeHash})+'\n';
-    await fs.writeFile(path.join(process.resourcesPath,'owner-admin-auth.json'),auth,{mode:0o600});
-    await fs.mkdir(path.join(profile,'server'),{recursive:true,mode:0o700});
-    await fs.writeFile(path.join(profile,'server','admin-auth.json'),auth,{mode:0o600});
+    await fs.mkdir(path.join(sharedProfile,'server'),{recursive:true,mode:0o700});
+    await fs.writeFile(path.join(sharedProfile,'server','admin-auth.json'),auth,{mode:0o600});
     unlocked=true;
+    global[Symbol.for('stelex.admin.unlocked')]=true;
     global[Symbol.for('stelex.admin.launchCode')]=code;
     app.once('browser-window-created',(_event,next)=>next.once('ready-to-show',()=>{ if(window && !window.isDestroyed()) window.destroy(); }));
     window.hide();

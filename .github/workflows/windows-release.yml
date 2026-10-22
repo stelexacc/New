@@ -55,7 +55,7 @@ jobs:
           [ScriptBlock]::Create($raw.Substring($offset + $marker.Length)) | Out-Null
 
   build:
-    name: Test, build, and stage the customer download
+    name: Test, build, and stage the combined download
     needs: windows-script-check
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -139,7 +139,7 @@ jobs:
           for manifest in Install.bat.sha256 Stelex-GPT-Windows-x64.zip.sha256 "Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256"; do
             sha256sum --check "$manifest"
           done
-      - name: Bundle the customer installer without owner tools or source
+      - name: Bundle the combined installer with encrypted Admin
         shell: bash
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
@@ -191,7 +191,7 @@ jobs:
           echo 'already_published=false' >> "$GITHUB_OUTPUT"
 
   native-windows:
-    name: Install and launch the customer Windows application
+    name: Install and launch the combined Windows application
     needs: build
     runs-on: windows-latest
     timeout-minutes: 15
@@ -261,9 +261,20 @@ jobs:
           $installedPackage = Get-Content -LiteralPath (Join-Path $mainDirectory 'resources\app\package.json') -Raw | ConvertFrom-Json
           if ($installedPackage.version -ne $env:RELEASE_VERSION) { throw 'The installed application has the wrong version.' }
           Invoke-StelexSmoke (Join-Path $mainDirectory 'Stelex GPT.exe') 'installed-app' 'app'
+          $adminExe = Join-Path $mainDirectory 'Stelex Admin.exe'
+          if (-not (Test-Path -LiteralPath $adminExe)) { throw 'The combined installer is missing the Admin tool.' }
+          $env:STELEX_ADMIN_LOCK_SMOKE_RESULT = Join-Path $smokeDirectory 'installed-admin.json'
+          $admin = Start-Process -FilePath $adminExe -WorkingDirectory $mainDirectory -PassThru
+          if (-not $admin.WaitForExit(60000)) { taskkill.exe /PID $admin.Id /T /F | Out-Null; throw 'Admin lock timed out.' }
+          $admin.Refresh()
+          $locked = Get-Content -LiteralPath $env:STELEX_ADMIN_LOCK_SMOKE_RESULT -Raw | ConvertFrom-Json
+          if ($admin.ExitCode -ne 0 -or -not $locked.ok -or -not $locked.wrongCodeRejected -or -not $locked.privateFilesAbsent) { throw 'Installed Admin lock failed.' }
+          Get-Content -LiteralPath $env:STELEX_ADMIN_LOCK_SMOKE_RESULT >> $env:GITHUB_STEP_SUMMARY
+          Remove-Item Env:STELEX_ADMIN_LOCK_SMOKE_RESULT
+
 
   publish:
-    name: Publish customer files only after native Windows checks pass
+    name: Publish combined files only after native Windows checks pass
     needs: [build, native-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5

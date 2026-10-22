@@ -4,10 +4,10 @@ const HOUR = 3_600_000;
 const integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
 const finite = (v, min, max) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 const rows = [
-  ['free', 'Free Trial', 0, 60, 180, 0, 'low', 1024, 0, 'Kostenlos kennenlernen', ['Basis-Modell', 'Kurze Antworten', 'Kleine, erneuerbare Kontingente']],
-  ['starter', 'Starter', 799, 600, 3000, 1, 'low', 2048, 1, 'Für deine täglichen Ideen', ['Mehr Kontingent', 'Schnelle Modelle bis Stufe 1', 'Längere Antworten']],
-  ['pro', 'Pro', 1499, 1800, 10000, 2, 'medium', 4096, 2, 'Mehr Raum für große Projekte', ['Modelle bis Stufe 2', 'Mittlere Denktiefe bei unterstützten Modellen', '4.096 Ausgabetokens']],
-  ['max', 'Max', 2999, 4500, 28000, 3, 'high', 8192, 3, 'Für intensive Arbeit', ['Alle konfigurierten Modellstufen', 'Hohe Denktiefe bei unterstützten Modellen', '8.192 Ausgabetokens']],
+  ['free', 'Free Trial', 0, 6000, 36000, 0, 'low', 1536, 0, 'Kostenlos kennenlernen', ['Basis-Modell', 'Schneller Antwortmodus', 'Großzügige erneuerbare Kontingente']],
+  ['starter', 'Starter', 799, 30000, 150000, 1, 'low', 2048, 1, 'Für deine täglichen Ideen', ['Mehr Kontingent', 'Schnelle Modelle bis Stufe 1', 'Längere Antworten']],
+  ['pro', 'Pro', 1499, 90000, 500000, 2, 'medium', 4096, 2, 'Mehr Raum für große Projekte', ['Modelle bis Stufe 2', 'Mittlere Denktiefe bei unterstützten Modellen', '4.096 Ausgabetokens']],
+  ['max', 'Max', 2999, 225000, 1400000, 3, 'high', 8192, 3, 'Für intensive Arbeit', ['Alle konfigurierten Modellstufen', 'Hohe Denktiefe bei unterstützten Modellen', '8.192 Ausgabetokens']],
 ];
 export const DEFAULT_PLANS = rows.map(([id,name,priceCents,shortLimit,weekLimit,modelTier,reasoningEffort,maxOutputTokens,priority,description,features]) => ({id,name,priceCents,currency:'EUR',durationDays:30,shortLimit,shortWindowHours:5,weekLimit,weekWindowHours:168,modelTier,reasoningEffort,maxOutputTokens,priority,description,features}));
 export const DEFAULT_PACKS = [[5,1000],[10,2200],[20,5000],[30,8000],[50,15000],[75,24000],[100,35000]].map(([euros,credits])=>({id:`credits-${euros}`,name:`${euros} € Credits`,credits,priceCents:euros*100,currency:'EUR'}));
@@ -73,6 +73,12 @@ export function initializePlans(db) {
         db.prepare("UPDATE settings SET value=? WHERE key='catalog'").run(JSON.stringify(catalog));
         db.exec('COMMIT');
       } catch(error) {db.exec('ROLLBACK');throw error;}
+    }
+    if (!db.prepare("SELECT 1 FROM settings WHERE key='quota-defaults-1.4'").get()) {
+      const old={free:[60,180],starter:[600,3000],pro:[1800,10000],max:[4500,28000]};
+      for(const plan of catalog.plans){const previous=old[plan.id],next=DEFAULT_PLANS.find(p=>p.id===plan.id);if(previous && plan.shortLimit===previous[0] && plan.weekLimit===previous[1]){plan.shortLimit=next.shortLimit;plan.weekLimit=next.weekLimit;if(plan.id==='free' && plan.maxOutputTokens===1024)plan.maxOutputTokens=1536;}}
+      db.prepare("UPDATE settings SET value=? WHERE key='catalog'").run(JSON.stringify(catalog));
+      db.prepare("INSERT INTO settings VALUES('quota-defaults-1.4','true')").run();
     }
     if (!validateCatalog(catalog)) throw new Error('Stored plan catalog is invalid.');
   }

@@ -56,8 +56,8 @@ try {
   for (const script of ['Install.bat', 'Setup-Ollama.ps1']) {
     if (await digest(path.join(root, 'scripts', script)) !== await digest(path.join(packageDir, script))) throw new Error(`${script} changed after Windows packaging. Rebuild the Windows payload.`);
   }
-  if (bundled.stelexRole !== 'customer') throw new Error('Customer payload has the wrong role.');
-  for (const forbidden of ['Stelex Admin.exe','resources/app/admin','resources/owner-admin-auth.json']) {
+  if (bundled.stelexRole !== 'combined') throw new Error('Customer payload has the wrong role.');
+  for (const forbidden of ['resources/app/admin','resources/owner-admin-auth.json']) {
     try { await fs.access(path.join(packageDir,forbidden)); } catch(error) { if(error.code==='ENOENT') continue; throw error; }
     throw new Error('Customer package contains private admin files.');
   }

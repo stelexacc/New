@@ -39,9 +39,9 @@ test('private files appear only after correct code, then control passes to the e
   assert.equal((await f.unlock('incorrect-test-code')).ok,false);
   await assert.rejects(()=>access(path.join(f.resources,'app','admin')));
   assert.equal((await f.unlock(f.code)).ok,true);
-  for(const[name,value]of Object.entries(f.data.files))assert.equal(await readFile(path.join(f.resources,'app','admin',name),'utf8'),value);
-  assert.equal(JSON.parse(await readFile(path.join(f.resources,'owner-admin-auth.json'),'utf8')).codeHash,f.data.codeHash);
-  assert.equal(JSON.parse(await readFile(path.join(f.directory,'Stelex Admin','server','admin-auth.json'),'utf8')).codeHash,f.data.codeHash);
+  for(const[name,value]of Object.entries(f.data.files))assert.equal(await readFile(path.join(f.directory,'Stelex GPT','admin-ui',name),'utf8'),value);
+  await assert.rejects(()=>access(path.join(f.resources,'owner-admin-auth.json')));
+  assert.equal(JSON.parse(await readFile(path.join(f.directory,'Stelex GPT','server','admin-auth.json'),'utf8')).codeHash,f.data.codeHash);
   assert.equal(f.handoffs(),1);assert.equal(f.window.hidden,true);
   assert.equal(f.globals[Symbol.for('stelex.admin.launchCode')],f.code);
   assert.equal((await f.unlock(f.code)).ok,false);assert.equal(f.handoffs(),1);

@@ -57,17 +57,9 @@ Function .onInit
 FunctionEnd
 
 Section "${PRODUCT_NAME}"
-!ifndef ADMIN_ONLY
-  ; Remove the admin components bundled by older customer installers.
-  ; Runtime userData and the separate private administrator profile are untouched.
-  Delete "$INSTDIR\Stelex Admin.exe"
+  ; Remove obsolete decrypted files from the old installation; data remains in AppData.
   RMDir /r "$INSTDIR\resources\app\admin"
   Delete "$INSTDIR\resources\owner-admin-auth.json"
-  ${If} ${FileExists} "$INSTDIR\Stelex Admin.exe"
-    MessageBox MB_ICONSTOP "Close the old Stelex Admin application and run setup again."
-    Abort
-  ${EndIf}
-!endif
   SetOutPath "$INSTDIR"
   File /r "${PACKAGE_DIR}/*"
   WriteUninstaller "$INSTDIR\Uninstall ${PRODUCT_NAME}.exe"
@@ -77,6 +69,8 @@ Section "${PRODUCT_NAME}"
 !ifndef ADMIN_ONLY
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Modell einrichten.lnk" "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\Setup-Ollama.ps1"' "$INSTDIR\resources\app\desktop\assets\icon.ico"
 !endif
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Stelex Admin.lnk" "$INSTDIR\Stelex Admin.exe" "" "$INSTDIR\resources\app\desktop\assets\icon.ico"
+  CreateShortcut "$DESKTOP\Stelex Admin.lnk" "$INSTDIR\Stelex Admin.exe" "" "$INSTDIR\resources\app\desktop\assets\icon.ico"
   WriteRegStr HKCU "Software\${PRODUCT_NAME}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${RELEASE_VERSION}"
@@ -98,6 +92,8 @@ Section "Uninstall"
 !ifndef ADMIN_ONLY
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\Modell einrichten.lnk"
 !endif
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Stelex Admin.lnk"
+  Delete "$DESKTOP\Stelex Admin.lnk"
   RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"

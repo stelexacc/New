@@ -29,7 +29,7 @@ test('registration, session login/logout and private API boundaries', async t =>
   const { request, register } = await fixture(t);
   assert.equal((await request('/api/me')).status, 401);
   const session = await register('owner@test.invalid');
-  assert.equal(session.data.balance, 500);
+  assert.equal(session.data.balance, 0);
   assert.match(session.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
   const me = await request('/api/me', { cookie: session.cookie });
   assert.equal(me.data.user.email, 'owner@test.invalid');
@@ -69,7 +69,7 @@ test('demo chats are explicitly labelled, free, persisted and isolated between a
   assert.equal(result.status, 200);
   assert.equal(result.data.creditsCharged, 0);
   assert.match(result.data.message.content, /demo mode/);
-  assert.equal(result.data.balance, 500);
+  assert.equal(result.data.balance, 0);
   assert.equal(result.data.usage.responses, 1);
   const id = result.data.conversationId;
   const history = await request(`/api/conversations/${id}`, { cookie: a.cookie });
