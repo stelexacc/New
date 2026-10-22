@@ -33,6 +33,7 @@ const port = Number(process.env.STELEX_PORT ?? 4318);
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('STELEX_PORT must be 0–65535.');
 const leases=new Map();let lastLease=Date.now();
 const app = await createApp({
+  offlinePublicKey:process.env.STELEX_OFFLINE_PUBLIC_KEY_FILE?readFileSync(process.env.STELEX_OFFLINE_PUBLIC_KEY_FILE,'utf8'):undefined,offlinePrivateKeyFile:process.env.STELEX_OFFLINE_PRIVATE_KEY_FILE,
   legacyAdminDb:process.env.STELEX_LEGACY_ADMIN_DB,serviceId:process.env.STELEX_SERVICE_ID,desktopKey:process.env.STELEX_DESKTOP_KEY,adminAuthFile:resolve(dataDir,'admin-auth.json'),
   desktopLease:(id,release)=>{if(typeof id!=='string'||id.length>100)return;if(release)leases.delete(id);else leases.set(id,Date.now());lastLease=Date.now();},
   adminDir:process.env.STELEX_ADMIN_DIR,aiTransport:process.env.STELEX_AI_TRANSPORT,removeLegacyWelcomeGift:process.env.STELEX_REMOVE_WELCOME==='true',

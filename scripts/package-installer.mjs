@@ -53,7 +53,7 @@ try {
   for (const file of ['Stelex GPT.exe', 'Setup-Ollama.ps1', 'Install.bat', 'resources/runtime/node.exe']) await fs.access(path.join(packageDir, file));
   const bundled = JSON.parse(await fs.readFile(path.join(packageDir, 'resources', 'app', 'package.json'), 'utf8'));
   if (bundled.version !== version) throw new Error('Windows payload is stale. Run npm run package:windows before building installers.');
-  for (const script of ['Install.bat', 'Setup-Ollama.ps1']) {
+  for (const script of ['Install.bat', 'Setup-Ollama.ps1','Setup-Python.ps1']) {
     if (await digest(path.join(root, 'scripts', script)) !== await digest(path.join(packageDir, script))) throw new Error(`${script} changed after Windows packaging. Rebuild the Windows payload.`);
   }
   if (bundled.stelexRole !== 'combined') throw new Error('Customer payload has the wrong role.');

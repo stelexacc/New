@@ -48,6 +48,8 @@ jobs:
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Ollama.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Python.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
           $raw = [IO.File]::ReadAllText((Join-Path $pwd 'scripts\Install.bat'))
           $marker = '# STELEX_BOOTSTRAP_POWERSHELL'
           $offset = $raw.LastIndexOf($marker, [StringComparison]::Ordinal)
@@ -131,6 +133,9 @@ jobs:
           set -euo pipefail
           node scripts/package-windows.mjs
           node scripts/package-installer.mjs
+          node scripts/package-admin.mjs
+          node scripts/package-admin-portable.mjs
+          7z t "artifacts/Stelex-Admin-Portable-$RELEASE_VERSION.exe"
           7z t "artifacts/Stelex-GPT-Windows-x64.zip"
           7z t "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe"
           cp scripts/Install.bat artifacts/Install.bat
@@ -149,6 +154,7 @@ jobs:
           cd artifacts
           zip -0 "STELEX-GPT-$RELEASE_VERSION-Komplett.zip" \
             Install.bat Install.bat.sha256 START-HIER.md \
+            "Stelex-Admin-Portable-$RELEASE_VERSION.exe" "Stelex-Admin-Portable-$RELEASE_VERSION.exe.sha256" \
             "Stelex-GPT-Setup-$RELEASE_VERSION.exe" "Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256"
           7z t "STELEX-GPT-$RELEASE_VERSION-Komplett.zip"
           sha256sum "STELEX-GPT-$RELEASE_VERSION-Komplett.zip" > "STELEX-GPT-$RELEASE_VERSION-Komplett.zip.sha256"
@@ -176,6 +182,7 @@ jobs:
             gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Stelex GPT $RELEASE_VERSION" --draft --notes-file "docs/RELEASE-$RELEASE_VERSION.md"
           fi
           gh release upload "$RELEASE_TAG" \
+            "artifacts/Stelex-Admin-Portable-$RELEASE_VERSION.exe" "artifacts/Stelex-Admin-Portable-$RELEASE_VERSION.exe.sha256" \
             artifacts/Install.bat artifacts/Install.bat.sha256 \
             "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe" "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256" \
             artifacts/Stelex-GPT-Windows-x64.zip artifacts/Stelex-GPT-Windows-x64.zip.sha256 \
@@ -205,13 +212,17 @@ jobs:
       RELEASE_TAG: ${{ needs.build.outputs.tag }}
       STELEX_DEMO_MODE: 'true'
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Download the staged distributions
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $distribution = Join-Path $env:RUNNER_TEMP 'stelex-distribution'
           New-Item -ItemType Directory -Path $distribution -Force | Out-Null
-          gh release download $env:RELEASE_TAG --repo $env:GH_REPO --dir $distribution --pattern 'Stelex-GPT-Setup-*.exe*' --pattern 'Stelex-GPT-Windows-x64.zip*'
+          gh release download $env:RELEASE_TAG --repo $env:GH_REPO --dir $distribution --pattern 'Stelex-GPT-Setup-*.exe*' --pattern 'Stelex-GPT-Windows-x64.zip*' --pattern 'Stelex-Admin-Portable-*.exe*'
           if ($LASTEXITCODE -ne 0) { throw 'The staged release could not be downloaded.' }
           foreach ($manifest in Get-ChildItem -LiteralPath $distribution -Filter '*.sha256') {
             $line = (Get-Content -LiteralPath $manifest.FullName -Raw).Trim()
@@ -271,6 +282,27 @@ jobs:
           if ($admin.ExitCode -ne 0 -or -not $locked.ok -or -not $locked.wrongCodeRejected -or -not $locked.privateFilesAbsent) { throw 'Installed Admin lock failed.' }
           Get-Content -LiteralPath $env:STELEX_ADMIN_LOCK_SMOKE_RESULT >> $env:GITHUB_STEP_SUMMARY
           Remove-Item Env:STELEX_ADMIN_LOCK_SMOKE_RESULT
+          $env:STELEX_ADMIN_LOCK_SMOKE_RESULT = Join-Path $smokeDirectory 'portable-admin.json'
+          $portableAdmin = Join-Path $env:STELEX_DISTRIBUTION "Stelex-Admin-Portable-$env:RELEASE_VERSION.exe"
+          $adminPortableProcess = Start-Process -FilePath $portableAdmin -PassThru
+          if (-not $adminPortableProcess.WaitForExit(60000)) { taskkill.exe /PID $adminPortableProcess.Id /T /F | Out-Null; throw 'Portable Admin timed out.' }
+          $adminPortableProcess.Refresh()
+          $portableLock = Get-Content -LiteralPath $env:STELEX_ADMIN_LOCK_SMOKE_RESULT -Raw | ConvertFrom-Json
+          if ($adminPortableProcess.ExitCode -ne 0 -or -not $portableLock.ok) { throw 'Portable Admin protection failed.' }
+          Remove-Item Env:STELEX_ADMIN_LOCK_SMOKE_RESULT
+      - name: Install the Python builder and compile and execute a harmless Windows fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-Python.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Python builder installation failed.' }
+          $mainDirectory = Join-Path $env:LOCALAPPDATA 'Programs\Stelex GPT'
+          $runtime = Join-Path $mainDirectory 'resources\runtime\node.exe'
+          $appRoot = Join-Path $mainDirectory 'resources\app'
+          $python = Join-Path $env:APPDATA 'Stelex GPT\tools\python-builder\Scripts\python.exe'
+          & $runtime scripts/windows-generation-check.cjs $appRoot (Join-Path $env:RUNNER_TEMP 'stelex-generated-native') $python
+          if ($LASTEXITCODE -ne 0) { throw 'Real generated EXE verification failed.' }
+
 
 
   publish:

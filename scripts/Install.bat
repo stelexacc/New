@@ -29,7 +29,7 @@ exit /b 0
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$ReleaseVersion = '1.4.0'
+$ReleaseVersion = '1.5.0'
 $SetupName = "Stelex-GPT-Setup-$ReleaseVersion.exe"
 $ReleaseUrl = "https://github.com/stelexacc/New/releases/download/v$ReleaseVersion"
 $TaskDirectory = $null
@@ -95,6 +95,10 @@ try {
     }
     $InstalledPackage = Get-Content -LiteralPath $PackageFile -Raw | ConvertFrom-Json
     if ($InstalledPackage.version -ne $ReleaseVersion) { throw 'The installed version does not match this installer / Installierte Version stimmt nicht ueberein.' }
+    $PythonSetup = Join-Path $InstallDirectory 'Setup-Python.ps1'
+    if (-not (Test-Path -LiteralPath $PythonSetup -PathType Leaf)) { throw 'Python builder setup is missing.' }
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonSetup
+    if ($LASTEXITCODE -ne 0) { throw 'Python EXE builder setup failed. Rerun Install.bat after fixing the error.' }
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $ModelSetup
     if ($LASTEXITCODE -ne 0) { throw 'The model setup failed. Stelex was not started / Modelleinrichtung fehlgeschlagen. Stelex wurde nicht gestartet.' }
     $null = Start-Process -FilePath $Application -WorkingDirectory $InstallDirectory

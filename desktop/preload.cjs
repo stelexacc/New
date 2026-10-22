@@ -13,5 +13,7 @@ contextBridge.exposeInMainWorld('stelex', Object.freeze({
 contextBridge.exposeInMainWorld('stelexDesktop', Object.freeze({
   getOutputDirectory: () => ipcRenderer.invoke('stelex:output-directory'),
   chooseOutputDirectory: () => ipcRenderer.invoke('stelex:choose-output-directory'),
+  generateFiles: (value) => ipcRenderer.invoke('stelex:generate-files', value),
+  getGenerationStatus: (requestId) => ipcRenderer.invoke('stelex:generation-status', requestId),
   saveArtifact: (artifact) => ipcRenderer.invoke('stelex:save-artifact', artifact),
 }));

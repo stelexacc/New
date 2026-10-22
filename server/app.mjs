@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {mintOfflineCode,verifyOfflineCode} from './offline-codes.mjs';
 import {importLegacyAdmin} from './legacy-admin.mjs';
 import { ollamaChat } from './ollama.mjs';
 import { migrateWelcomeGift } from './welcome-migration.mjs';
@@ -124,9 +125,12 @@ export async function createApp(options = {}) {
     CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversationId, createdAt);
     CREATE INDEX IF NOT EXISTS usage_user ON usage(userId);
   `);
+  db.exec('CREATE TABLE IF NOT EXISTS message_metrics(messageId TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,elapsedMs INTEGER NOT NULL)');
   const plans = initializePlans(db);
   importLegacyAdmin(db,options.legacyAdminDb);
   const prompts = initializePrompts(db);
+  const offlinePublicKey=options.offlinePublicKey;
+  const signingKey=()=>{if(!options.offlinePrivateKeyFile)return null;try{return readFileSync(options.offlinePrivateKeyFile,'utf8');}catch(error){if(error.code==='ENOENT')return null;throw error;}};
   const attachments = initializeAttachments(db);
   const quotasEnabled = options.quotasEnabled !== false;
   // Run one backend process per database. Recover interrupted requests on restart.
@@ -278,7 +282,7 @@ export async function createApp(options = {}) {
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
-        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.4.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
+        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.5.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
       }
       if (method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(path)) {
         limit(request, 'auth-ip', 300);
@@ -382,9 +386,10 @@ export async function createApp(options = {}) {
           const durationDays=body.durationDays ?? plan?.durationDays;
           const credits=type === 'plan' ? 1 : body.credits;
           if (!['credits','plan'].includes(type) || !integer(credits,1,1_000_000_000) || !integer(count,1,100) || typeof note !== 'string' || note.length > 200 || (type === 'plan' && (!plan || !integer(durationDays,1,366)))) throw new HttpError(400,'Use valid credits or a paid plan, and 1–100 keys.','INVALID_KEY_AMOUNT');
+          const privateKey=signingKey();
           const keys = transaction(() => {
             const generated=Array.from({ length: count }, () => {
-              const code=`STX-${randomBytes(20).toString('hex').toUpperCase().match(/.{1,8}/g).join('-')}`;
+              const code=privateKey ? mintOfflineCode(privateKey,{type,credits:type==='plan'?0:credits,planId,durationDays}).code : `STX-${randomBytes(20).toString('hex').toUpperCase().match(/.{1,8}/g).join('-')}`;
               const key={id:randomUUID(),code,credits:type === 'plan' ? 0 : credits,type,planId:type === 'plan' ? planId : null,durationDays:type === 'plan' ? durationDays : null,createdAt:iso(),note};
               db.prepare('INSERT INTO credit_keys(id,codeHash,credits,note,createdAt,type,planId,durationDays) VALUES(?,?,?,?,?,?,?,?)').run(key.id,hash(code),credits,note,key.createdAt,type,key.planId,key.durationDays);
               return key;
@@ -459,9 +464,13 @@ export async function createApp(options = {}) {
         if (method === 'POST' && path === '/api/credits/redeem') {
           limit(request, 'redeem', 20, 60_000, `user:${user.id}`);
           const body = await readJson(request);
-          const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
-          if (!/^STX-(?:[A-F0-9]{8}-){4}[A-F0-9]{8}$/.test(code)) throw new HttpError(400, 'Invalid redemption code.', 'INVALID_CODE');
+          const rawCode=typeof body.code==='string'?body.code.trim():'';
+          const code=rawCode.startsWith('STXO1.')?rawCode:rawCode.toUpperCase();
+          let offline;
+          if(code.startsWith('STXO1.')){try{if(!offlinePublicKey)throw Error();offline=verifyOfflineCode(code,offlinePublicKey);}catch{throw new HttpError(400,'Offline-Code ist ungültig, verändert oder stammt von einem anderen Herausgeber.','INVALID_CODE');}}
+          else if(!/^STX-(?:[A-F0-9]{8}-){4}[A-F0-9]{8}$/.test(code))throw new HttpError(400,'Invalid redemption code.','INVALID_CODE');
           const redeemed=transaction(() => {
+            if(offline){const existing=db.prepare('SELECT id FROM credit_keys WHERE codeHash=?').get(hash(code));if(!existing)db.prepare('INSERT INTO credit_keys(id,codeHash,credits,note,createdAt,type,planId,durationDays) VALUES(?,?,?,?,?,?,?,?)').run(offline.id,hash(code),offline.type==='plan'?1:offline.credits,'Offline-signierter Code',new Date(offline.issuedAt).toISOString(),offline.type,offline.planId,offline.durationDays);}
             const key=db.prepare('SELECT * FROM credit_keys WHERE codeHash=?').get(hash(code));
             if (!key || key.redeemedAt) throw new HttpError(400,'This code is invalid or has already been redeemed.','INVALID_CODE');
             const current=db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
@@ -493,11 +502,13 @@ export async function createApp(options = {}) {
           db.prepare('INSERT INTO conversations VALUES(?,?,?,?,?)').run(conversation.id, user.id, conversation.title, time, time);
           return json(201, { conversation });
         }
+        const metricMatch=path.match(/^\/api\/messages\/([a-f0-9-]{36})\/elapsed$/);
+        if(metricMatch&&method==='POST'){const {elapsedMs}=await readJson(request);if(!integer(elapsedMs,0,7200000))throw new HttpError(400,'Invalid elapsed duration.');const owned=db.prepare("SELECT m.id FROM messages m JOIN conversations c ON m.conversationId=c.id WHERE m.id=? AND c.userId=? AND m.role='assistant'").get(metricMatch[1],user.id);if(!owned)throw new HttpError(404,'Not found.','NOT_FOUND');db.prepare('INSERT INTO message_metrics VALUES(?,?) ON CONFLICT(messageId) DO UPDATE SET elapsedMs=MAX(elapsedMs,excluded.elapsedMs)').run(owned.id,elapsedMs);return json(200,{ok:true});}
         const conversationMatch = path.match(/^\/api\/conversations\/([a-f0-9-]{36})$/);
         if (conversationMatch && ['GET', 'DELETE'].includes(method)) {
           const conversation = db.prepare('SELECT id,title,createdAt,updatedAt FROM conversations WHERE id=? AND userId=?').get(conversationMatch[1], user.id);
           if (!conversation) throw new HttpError(404, 'Conversation not found.', 'NOT_FOUND');
-          if (method === 'GET') return json(200, { conversation, promptSettings:prompts.readConversation(user.id,conversation.id), messages: db.prepare('SELECT id,role,content,createdAt,model FROM messages WHERE conversationId=? ORDER BY rowid').all(conversation.id).map(item=>({...item,attachments:attachments.list(item.id)})) });
+          if (method === 'GET') return json(200, { conversation, promptSettings:prompts.readConversation(user.id,conversation.id), messages: db.prepare('SELECT id,role,content,createdAt,model FROM messages WHERE conversationId=? ORDER BY rowid').all(conversation.id).map(item=>({...item,elapsedMs:db.prepare('SELECT elapsedMs FROM message_metrics WHERE messageId=?').get(item.id)?.elapsedMs,attachments:attachments.list(item.id)})) });
           if (busyUsers.has(user.id)) throw new HttpError(409, 'A response is still generating.', 'CHAT_BUSY');
           db.prepare('DELETE FROM conversations WHERE id=?').run(conversation.id); return json(200, { ok: true });
         }
@@ -540,6 +551,7 @@ export async function createApp(options = {}) {
           while (history.length && history.reduce((n, item) => n + item.content.length, 0) > (options.aiTransport==='ollama-native' ? (plan.id==='free'?12000:24000) : 48000)) history.splice(0, 2);
           const promptSettings=requestedPrompts?.override ? requestedPrompts : requestedPrompts ? {...prompts.readPreferences(user.id),override:false} : prompts.readConversation(user.id,conversation?.id);
           const systemMessage=prompts.buildMessages(promptSettings,language);
+          if(/\.(?:py|exe|js|html|css|json|txt|cpp|ps1)\b|(?:erstelle|schreib|programmiere|entwickle|create|build).{0,80}(?:datei|file|programm|app|tool)/i.test(message))systemMessage.content+='\nWhen creating files, return complete code in fenced blocks using a language and filename, for example ```python filename="main.py". Use single filenames without paths. For a requested Windows EXE provide complete Python source; the desktop builds it with PyInstaller. Never present text renamed to .exe. Prefer Python standard library when possible. Do not claim saving or building succeeded; the app reports actual results.';
           const promptHash=hash(systemMessage.content);
           const historyItems=attachments.historyMessages(history,uploaded);
           const allContextAttachments=[...uploaded,...historyItems.flatMap(item=>item.attachments)];
@@ -553,6 +565,7 @@ export async function createApp(options = {}) {
           const reservation = demoMode ? 0 : Math.ceil((maxInputTokens + maxOutputTokens)*multiplier / TOKENS_PER_CREDIT);
           let heldCredits=0;let heldQuota=0;
           if (!demoMode && !baseUrl) throw new HttpError(503, 'AI provider is not configured.', 'PROVIDER_UNAVAILABLE');
+          const generationStartedAt=Date.now();
           busyUsers.add(user.id);
           setProgress(user.id,requestId,{stage:'queued',startedAt:Date.now(),preview:''});
           const reservationId = randomUUID();
@@ -600,7 +613,7 @@ export async function createApp(options = {}) {
               providerObservation = { reachable: true, checkedAt: iso() };
             }
             const time = iso();
-            const assistant = { id: randomUUID(), role: 'assistant', content, createdAt: time, model: model.id };
+            const assistant = { id: randomUUID(), role: 'assistant', content, createdAt: time, model: model.id,elapsedMs:Math.max(0,Date.now()-generationStartedAt) };
             const completed = transaction(() => {
               if (!conversation) {
                 conversation = { id: randomUUID(), title: (message.trim().replace(/\s+/g, ' ')||uploaded[0]?.name||'New conversation').slice(0, 70) };
@@ -611,6 +624,7 @@ export async function createApp(options = {}) {
               db.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?)').run(userMessageId, conversation.id, 'user', message.trim(), time, model.id);
               const userMessage={id:userMessageId,role:'user',content:message.trim(),createdAt:time,model:model.id,attachments:attachments.save(userMessageId,uploaded)};
               db.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?)').run(assistant.id, conversation.id, 'assistant', content, time, model.id);
+              db.prepare('INSERT INTO message_metrics VALUES(?,?)').run(assistant.id,assistant.elapsedMs);
               db.prepare('UPDATE conversations SET updatedAt=? WHERE id=?').run(time, conversation.id);
               const includedUnits=Math.min(charge,heldQuota);
               const creditsCharged=charge-includedUnits;

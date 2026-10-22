@@ -10,6 +10,7 @@ function validate(value) {
   if (!value.files || Object.keys(value.files).length !== ALLOWED.length) throw new Error('Invalid private files.');
   for (const name of ALLOWED) if (typeof value.files[name] !== 'string' || Buffer.byteLength(value.files[name]) > 256*1024) throw new Error('Invalid private file.');
   if (Object.keys(value.files).some(name => !ALLOWED.includes(name))) throw new Error('Unexpected private file.');
+  if(value.signingPrivateKey!==undefined && (typeof value.signingPrivateKey!=='string'||value.signingPrivateKey.length>4096||!value.signingPrivateKey.startsWith('-----BEGIN PRIVATE KEY-----')))throw new Error('Invalid signing key.');
   return value;
 }
 function seal(value, code) {

@@ -15,3 +15,5 @@ __pycache__/
 
 **/owner-admin-auth.json
 **/admin-auth.json
+
+**/*-private.pem

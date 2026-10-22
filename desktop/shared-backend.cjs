@@ -6,8 +6,8 @@ const {spawn}=require('node:child_process');
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function connectShared({root,runtime,appRoot,env,admin=false}){
   await fs.mkdir(root,{recursive:true,mode:0o700});
-  const recordFile=path.join(root,'desktop-service-1.4.json'),lockFile=recordFile+'.lock';
-  const read=async()=>{try{const item=JSON.parse(await fs.readFile(recordFile,'utf8'));const url=new URL(item.url);if(url.hostname!=='127.0.0.1'||url.protocol!=='http:'||!item.key||!item.serviceId)return null;const response=await fetch(`${url.origin}/api/health`,{signal:AbortSignal.timeout(5000)});const health=await response.json();return response.ok&&health.serviceId===item.serviceId&&health.version==='1.4.0'?item:null;}catch{return null;}};
+  const recordFile=path.join(root,'desktop-service-1.5.json'),lockFile=recordFile+'.lock';
+  const read=async()=>{try{const item=JSON.parse(await fs.readFile(recordFile,'utf8'));const url=new URL(item.url);if(url.hostname!=='127.0.0.1'||url.protocol!=='http:'||!item.key||!item.serviceId)return null;const response=await fetch(`${url.origin}/api/health`,{signal:AbortSignal.timeout(5000)});const health=await response.json();return response.ok&&health.serviceId===item.serviceId&&health.version==='1.5.0'?item:null;}catch{return null;}};
   let item=await read();
   if(!item){
     let lock;
@@ -20,7 +20,7 @@ async function connectShared({root,runtime,appRoot,env,admin=false}){
       item=await read();
       if(!item){
         const key=randomBytes(32).toString('hex'),serviceId=randomUUID();
-        const child=spawn(runtime,[path.join(appRoot,'server','index.mjs')],{cwd:appRoot,env:{...env,STELEX_DESKTOP_KEY:key,STELEX_SERVICE_ID:serviceId,STELEX_SERVICE_RECORD:recordFile,STELEX_DATA_DIR:path.join(root,'server'),STELEX_ADMIN_DIR:path.join(root,'admin-ui'),STELEX_ADMIN_DISABLED:'false',STELEX_ADMIN_TOKEN:'',STELEX_ADMIN_CODE_HASH:'',STELEX_INITIAL_CREDITS:'0',STELEX_REMOVE_WELCOME:'true'},windowsHide:true,detached:true,stdio:'ignore'});
+        const child=spawn(runtime,[path.join(appRoot,'server','index.mjs')],{cwd:appRoot,env:{...env,STELEX_DESKTOP_KEY:key,STELEX_SERVICE_ID:serviceId,STELEX_SERVICE_RECORD:recordFile,STELEX_DATA_DIR:path.join(root,'server'),STELEX_ADMIN_DIR:path.join(root,'admin-ui'),STELEX_ADMIN_DISABLED:'false',STELEX_ADMIN_TOKEN:'',STELEX_ADMIN_CODE_HASH:'',STELEX_OFFLINE_PUBLIC_KEY_FILE:path.join(appRoot,'server','offline-issuer-public.pem'),STELEX_OFFLINE_PRIVATE_KEY_FILE:path.join(root,'server','offline-issuer-private.pem'),STELEX_INITIAL_CREDITS:'0',STELEX_REMOVE_WELCOME:'true'},windowsHide:true,detached:true,stdio:'ignore'});
         let spawnError;child.once('error',error=>{spawnError=error;});child.unref();
         for(let attempt=0;attempt<120;attempt++){if(spawnError)throw spawnError;await wait(250);item=await read();if(item)break;}
         if(!item)throw new Error('Der gemeinsame Stelex-Dienst konnte nicht starten. Alte Stelex-Versionen schließen und erneut starten.');

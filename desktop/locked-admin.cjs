@@ -32,6 +32,7 @@ async function unlock(event,code) {
     const auth=JSON.stringify({codeHash:privateData.codeHash})+'\n';
     await fs.mkdir(path.join(sharedProfile,'server'),{recursive:true,mode:0o700});
     await fs.writeFile(path.join(sharedProfile,'server','admin-auth.json'),auth,{mode:0o600});
+    if(privateData.signingPrivateKey)await fs.writeFile(path.join(sharedProfile,'server','offline-issuer-private.pem'),privateData.signingPrivateKey,{mode:0o600});
     unlocked=true;
     global[Symbol.for('stelex.admin.unlocked')]=true;
     global[Symbol.for('stelex.admin.launchCode')]=code;

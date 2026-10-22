@@ -1,7 +1,7 @@
 name: Remove the requested customer download
 'on':
   push:
-    branches: ['stelex-gpt-v1.4.0']
+    branches: ['stelex-gpt-v1.5.0']
     paths: ['release-removal.json']
 permissions:
   contents: read
@@ -22,13 +22,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$GH_REPO" == 'stelexacc/New' && "$GITHUB_REF_NAME" == 'stelex-gpt-v1.4.0' ]]
-          expected_commit=$(node -e "const r=require('./release-removal.json'); if(r.remove!==true || r.releaseTag!=='v1.4.0' || !/^[a-f0-9]{40}$/.test(r.expectedCommit)) process.exit(1); console.log(r.expectedCommit)")
+          [[ "$GH_REPO" == 'stelexacc/New' && "$GITHUB_REF_NAME" == 'stelex-gpt-v1.5.0' ]]
+          expected_commit=$(node -e "const r=require('./release-removal.json'); if(r.remove!==true || r.releaseTag!=='v1.5.0' || !/^[a-f0-9]{40}$/.test(r.expectedCommit)) process.exit(1); console.log(r.expectedCommit)")
           git merge-base --is-ancestor "$expected_commit" HEAD
-          actual_commit=$(gh api "repos/$GH_REPO/commits/v1.4.0" --jq .sha)
+          actual_commit=$(gh api "repos/$GH_REPO/commits/v1.5.0" --jq .sha)
           [[ "$actual_commit" == "$expected_commit" ]] || { echo 'Release target differs from the explicit removal request.' >&2; exit 1; }
-          gh release view v1.4.0 --repo "$GH_REPO" --json body --jq .body > "$RUNNER_TEMP/stelex-removal-body.txt"
-          grep -Fx '<!-- stelex-customer-release:1.4.0 -->' "$RUNNER_TEMP/stelex-removal-body.txt"
-          gh release delete v1.4.0 --repo "$GH_REPO" --yes --cleanup-tag
-          gh api --method DELETE "repos/$GH_REPO/git/refs/heads/stelex-gpt-v1.4.0"
+          gh release view v1.5.0 --repo "$GH_REPO" --json body --jq .body > "$RUNNER_TEMP/stelex-removal-body.txt"
+          grep -Fx '<!-- stelex-customer-release:1.5.0 -->' "$RUNNER_TEMP/stelex-removal-body.txt"
+          gh release delete v1.5.0 --repo "$GH_REPO" --yes --cleanup-tag
+          gh api --method DELETE "repos/$GH_REPO/git/refs/heads/stelex-gpt-v1.5.0"
           echo 'Removed the requested customer release, its assets, version tag and dedicated branch.' >> "$GITHUB_STEP_SUMMARY"

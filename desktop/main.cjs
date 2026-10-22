@@ -22,6 +22,7 @@ let settings = {};
 let preferences = {};
 let outputDirectory = null;
 let outputWrite = Promise.resolve();
+const generationStatus=new Map();
 let preferenceWrite = Promise.resolve();
 let quitting = false;
 const smokeFile = process.env.CI === 'true' && process.env.STELEX_SMOKE_TEST_FILE && path.isAbsolute(process.env.STELEX_SMOKE_TEST_FILE)
@@ -352,6 +353,19 @@ else {
         });
       });
       return outputWrite;
+    });
+    ipcMain.handle('stelex:generation-status',(event,requestId)=>{validSender(event);return generationStatus.get(requestId)||{stage:'preparing'};});
+    ipcMain.handle('stelex:generate-files',(event,value)=>{
+      const window=validSender(event);
+      if(!value||typeof value.content!=='string'||value.content.length>1000000||typeof value.requestText!=='string'||value.requestText.length>20000||!/^[a-f0-9-]{36}$/i.test(value.requestId||''))throw new Error('Invalid generation request.');
+      outputWrite=outputWrite.catch(()=>{}).then(async()=>{
+        validSender(event);
+        const {parseGeneratedFiles}=require('./generated-files.cjs');const parsed=parseGeneratedFiles(value.content,value.requestText);
+        if(!parsed.files.length)return{files:[],error:parsed.wantsExe?'Die KI hat keinen Python-Code für den EXE-Build geliefert. Bitte um vollständigen Python-Code bitten.':null};
+        if(!outputDirectory){const selected=await chooseOutputDirectory(window);if(selected.canceled)return{canceled:true,files:[]};}
+        const result=await require('./generation-jobs.cjs').generateFiles({directory:outputDirectory,dataRoot,python:path.join(app.getPath('appData'),'Stelex GPT','tools','python-builder','Scripts','python.exe'),...value,onProgress:state=>{generationStatus.set(value.requestId,state);if(generationStatus.size>100)generationStatus.delete(generationStatus.keys().next().value);}});
+        generationStatus.set(value.requestId,{stage:'done'});return result;
+      });return outputWrite;
     });
     ipcMain.handle('stelex:external', (event, value) => { validSender(event); return openExternal(value); });
     buildMenu();

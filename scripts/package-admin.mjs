@@ -18,7 +18,7 @@ const electronVersion = packageJson.devDependencies.electron.replace(/^[~^]/, ''
 const nodeVersion = '24.19.0';
 const dispatcher = new EnvHttpProxyAgent();
 setGlobalDispatcher(dispatcher);
-const privateInput = (name) => /^(?:\.env(?:\..*)?|\.data|admin-token(?:\.txt)?|.*\.(?:sqlite|db)(?:-wal|-shm)?)$/i.test(name);
+const privateInput = (name) => /^(?:\.env(?:\..*)?|\.data|admin-token(?:\.txt)?|.*-private\.pem|.*\.(?:sqlite|db)(?:-wal|-shm)?)$/i.test(name);
 
 async function sha256(file) {
   const digest = createHash('sha256');
