@@ -1,32 +1,26 @@
-name: Build and publish DeepSeek installer fix
+name: Package Stelex in one folder without Admin
 on:
   push:
     branches: [release/stelex-deepseek-free-plugins]
 permissions:
   contents: write
 concurrency:
-  group: publish-stelex-deepseek-fix
+  group: package-stelex-one-folder
   cancel-in-progress: false
 jobs:
-  publish:
+  package:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Install official distribution build tools
-        run: sudo apt-get update && sudo apt-get install -y nsis p7zip-full
-      - name: Verify DeepSeek model source exists
+      - name: Download previously verified installer and repair
         run: |
-          curl --fail --location --retry 2 https://registry.ollama.ai/v2/huihui_ai/deepseek-r1-abliterated/manifests/8b --output /tmp/deepseek-manifest.json
-          python3 -c 'import json; d=json.load(open("/tmp/deepseek-manifest.json")); assert d["layers"] and d["schemaVersion"] == 2'
-      - name: Download original verified release
-        run: gh release download v1.8.1 --pattern STELEX-GPT-1.8.1-Komplett.zip --dir base
-      - name: Build wrapper and verify all embedded files
-        run: python3 release/stelex-plugins/build-fix.py base/STELEX-GPT-1.8.1-Komplett.zip output
-      - name: Publish repair and fixed complete installer
-        run: |
-          gh release upload v1.8.1-deepseek-fix output/STELEX-GPT-DeepSeek-Reparatur.zip output/STELEX-GPT-DeepSeek-Reparatur.zip.sha256 output/STELEX-GPT-Setup-1.8.1-DeepSeek-Fix.exe output/STELEX-GPT-Setup-1.8.1-DeepSeek-Fix.exe.sha256 output/STELEX-GPT-1.8.1-DeepSeek-Fix-Komplett.zip output/STELEX-GPT-1.8.1-DeepSeek-Fix-Komplett.zip.sha256 --clobber
-          gh release edit v1.8.1-deepseek-fix --draft=false --latest=false
+          gh release download v1.8.1-deepseek-fix --pattern 'STELEX-GPT-Setup-1.8.1-DeepSeek-Fix.exe*' --dir inputs
+          gh release download v1.8.1-deepseek-fix --pattern 'STELEX-GPT-DeepSeek-Reparatur.zip*' --dir inputs
+      - name: Package one directory and verify contents
+        run: python3 release/stelex-plugins/one-folder.py inputs output
+      - name: Publish folder package and checksum
+        run: gh release upload v1.8.1-deepseek-fix output/STELEX-GPT-1.8.1-Alles-in-einem-Ordner.zip output/STELEX-GPT-1.8.1-Alles-in-einem-Ordner.zip.sha256 --clobber
