@@ -163,6 +163,7 @@ jobs:
           7z t "artifacts/Stelex-Admin-Portable-$RELEASE_VERSION.exe"
           7z t "artifacts/Stelex-GPT-Windows-x64.zip"
           7z t "artifacts/Stelex-GPT-Setup-$RELEASE_VERSION.exe"
+          cp scripts/Deinstall.bat artifacts/Deinstall.bat
           cp scripts/Install.bat artifacts/Install.bat
           cd artifacts
           sha256sum Install.bat > Install.bat.sha256
@@ -178,7 +179,7 @@ jobs:
           cp "docs/RELEASE-$RELEASE_VERSION.md" artifacts/START-HIER.md
           cd artifacts
           zip -0 "STELEX-GPT-$RELEASE_VERSION-Komplett.zip" \
-            Install.bat Install.bat.sha256 START-HIER.md \
+            Deinstall.bat Install.bat Install.bat.sha256 START-HIER.md \
             "Stelex-Admin-Portable-$RELEASE_VERSION.exe" "Stelex-Admin-Portable-$RELEASE_VERSION.exe.sha256" \
             "Stelex-GPT-Setup-$RELEASE_VERSION.exe" "Stelex-GPT-Setup-$RELEASE_VERSION.exe.sha256"
           7z t "STELEX-GPT-$RELEASE_VERSION-Komplett.zip"

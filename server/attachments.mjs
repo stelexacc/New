@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-export const ATTACHMENT_LIMITS = { count: 4, imageBytes: 5 * 1024 * 1024, imageTotalBytes: 10 * 1024 * 1024, textBytes: 64 * 1024, textTotalBytes: 100 * 1024 };
+export const ATTACHMENT_LIMITS = { count: 4, imageBytes: 5 * 1024 * 1024, imageTotalBytes: 10 * 1024 * 1024, textBytes: 100 * 1024, textTotalBytes: 100 * 1024 };
 const IMAGE_TYPES = new Set(['image/png','image/jpeg','image/webp']);
 const TEXT_TYPES = new Set(['application/json','application/xml','application/yaml','application/x-yaml','application/javascript','application/typescript','application/x-python-code']);
 class AttachmentError extends Error {

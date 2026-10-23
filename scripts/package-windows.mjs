@@ -130,7 +130,7 @@ try {
   await fs.copyFile(nodeExe, path.join(packageRoot, 'resources', 'runtime', 'node.exe'));
   await download(`https://raw.githubusercontent.com/nodejs/node/v${nodeVersion}/LICENSE`, path.join(packageRoot, 'resources', 'runtime', 'NODE-LICENSE.txt'));
   await fs.copyFile(path.join(root,'config','models.json'),path.join(packageRoot,'models.json'));
-  const extraFiles = ['scripts/Install.bat', 'scripts/Setup-Ollama.ps1', 'scripts/Setup-Python.ps1','scripts/Setup-Voice.ps1','scripts/Select-Components.ps1','scripts/Setup-Selected.ps1', 'README.md', 'VALIDATION.md'];
+  const extraFiles = ['scripts/Deinstall.bat', 'scripts/Install.bat', 'scripts/Setup-Ollama.ps1', 'scripts/Setup-Python.ps1','scripts/Setup-Voice.ps1','scripts/Select-Components.ps1','scripts/Setup-Selected.ps1', 'README.md', 'VALIDATION.md'];
   for (const file of extraFiles) {
     try { await fs.copyFile(path.join(root, file), path.join(packageRoot, path.basename(file))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }

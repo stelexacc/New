@@ -201,7 +201,7 @@ test('unsupported image models and malformed, oversized or excessive attachments
     [{ ...image(), content: Buffer.from('<svg>invalid image</svg>').toString('base64') }],
     [{ ...image(), mime: 'image/svg+xml' }],
     [{ ...image(), content: Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.alloc(5 * 1024 * 1024)]).toString('base64') }],
-    [textFile('x'.repeat(64 * 1024 + 1))],
+    [textFile('x'.repeat(100 * 1024 + 1))],
     [textFile('x'.repeat(60 * 1024)), { ...textFile('x'.repeat(60 * 1024)), name: 'two.py' }],
     Array.from({ length: 5 }, (_, i) => ({ ...textFile(), name: `${i}.py` }))
   ];
@@ -213,4 +213,10 @@ test('unsupported image models and malformed, oversized or excessive attachments
   assert.equal(capable.provider.calls.length, 0);
   assert.equal((await capable.request('/api/me', { cookie: owner.cookie })).data.balance, 1000);
   assert.equal(capable.app.db.prepare('SELECT COUNT(*) n FROM reservations').get().n, 0);
+});
+
+test('remember me controls persistence; logout revokes the actual session',async t=>{
+ const f=await fixture(t);const email=`${randomUUID()}@test.invalid`;
+ const first=await f.request('/api/auth/register',{method:'POST',body:{email,name:'Remember test',password:PASSWORD,remember:false}});assert.equal(first.status,200);assert.doesNotMatch(first.headers['set-cookie'],/Max-Age=/);assert.match(first.headers['set-cookie'],/HttpOnly/);
+ const login=await f.request('/api/auth/login',{method:'POST',body:{email,password:PASSWORD,remember:true}});assert.match(login.headers['set-cookie'],/Max-Age=2592000/);const out=await f.request('/api/auth/logout',{method:'POST',cookie:login.cookie});assert.match(out.headers['set-cookie'],/Max-Age=0/);const me=await f.request('/api/me',{cookie:login.cookie});assert.equal(me.status,401);
 });

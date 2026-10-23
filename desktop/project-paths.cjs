@@ -1,0 +1,5 @@
+'use strict';
+const path=require('node:path');const fs=require('node:fs/promises');const {decodeArtifact,canonicalDirectory}=require('./output-files.cjs');
+function validateRelative(name){if(typeof name!=='string'||name.length>180||name.includes('\\')||path.posix.isAbsolute(name))throw Error('Ungültiger Projektpfad.');const parts=name.split('/');if(parts.length>12||parts.some(p=>!p||p==='.'||p==='..'))throw Error('Ungültiger Projektpfad.');for(const part of parts)decodeArtifact({name:part,content:''});return parts;}
+async function projectDestination(root,name){const parts=validateRelative(name);const canonical=await canonicalDirectory(root);if(canonical!==root)throw Error('Ausgabeordner verändert.');let directory=root;for(const part of parts.slice(0,-1)){directory=path.join(directory,part);try{await fs.mkdir(directory);}catch(error){if(error.code!=='EEXIST')throw error;}const stat=await fs.lstat(directory);if(stat.isSymbolicLink()||!stat.isDirectory()||await fs.realpath(directory)!==directory)throw Error('Projektpfad ist kein regulärer Unterordner.');}return{directory,name:parts.at(-1)};}
+module.exports={validateRelative,projectDestination};

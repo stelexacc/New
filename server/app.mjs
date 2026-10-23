@@ -19,7 +19,7 @@ import { initializeAttachments, validateAttachments, providerContent, estimatedM
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TOKENS_PER_CREDIT = 100;
-const SESSION_AGE = 7 * 24 * 60 * 60 * 1000;
+const SESSION_AGE = 30 * 24 * 60 * 60 * 1000;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const iso = () => new Date().toISOString();
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
@@ -238,7 +238,7 @@ export async function createApp(options = {}) {
     if (rateLimits.size > 10_000) for (const [entry, value] of rateLimits) if (value.resetAt < Date.now()) rateLimits.delete(entry);
     if (item.count > max) throw new HttpError(429, 'Too many requests. Please wait before retrying.', 'RATE_LIMITED');
   };
-  const sessionCookie = (request, token, expired = false) => `stelex_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${expired ? 0 : SESSION_AGE / 1000}${options.secureCookies || options.publicUrl?.startsWith('https:') || request.socket.encrypted ? '; Secure' : ''}`;
+  const sessionCookie = (request, token, expired = false, remember = true) => `stelex_session=${token}; HttpOnly; SameSite=Strict; Path=/${expired ? '; Max-Age=0' : remember ? `; Max-Age=${SESSION_AGE / 1000}` : ''}${options.secureCookies || options.publicUrl?.startsWith('https:') || request.socket.encrypted ? '; Secure' : ''}`;
   const providerKind = demoMode ? 'demo' : /(?:127\.0\.0\.1|localhost|\[::1\]):11434/.test(baseUrl || '') ? 'ollama' : 'openai-compatible';
   const checkProvider = async () => {
     if (demoMode) return;
@@ -286,7 +286,7 @@ export async function createApp(options = {}) {
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
-        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.7.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
+        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.8.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
       }
       if (method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(path)) {
         limit(request, 'auth-ip', 300);
@@ -322,7 +322,7 @@ export async function createApp(options = {}) {
         const token = randomBytes(32).toString('hex');
         db.prepare('DELETE FROM sessions WHERE expiresAt<?').run(Date.now());
         db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hash(token), user.id, Date.now() + SESSION_AGE);
-        return json(200, { ...accountState(user.id),verificationDeliveryFailed }, { 'Set-Cookie': sessionCookie(request, token) });
+        return json(200, { ...accountState(user.id),verificationDeliveryFailed }, { 'Set-Cookie': sessionCookie(request, token, false, body.remember === true) });
       }
       if (method === 'POST' && path === '/api/auth/logout') {
         const token = request.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('stelex_session='))?.slice(15);
@@ -562,7 +562,7 @@ export async function createApp(options = {}) {
           while (history.length && history.reduce((n, item) => n + item.content.length, 0) > (options.aiTransport==='ollama-native' ? (plan.id==='free'?12000:24000) : 48000)) history.splice(0, 2);
           const promptSettings=requestedPrompts?.override ? requestedPrompts : requestedPrompts ? {...prompts.readPreferences(user.id),override:false} : prompts.readConversation(user.id,conversation?.id);
           const systemMessage=prompts.buildMessages(promptSettings,language);
-          if(/\.(?:py|exe|js|html|css|json|txt|cpp|ps1)\b|(?:erstelle|schreib|programmiere|entwickle|create|build).{0,80}(?:datei|file|programm|app|tool)/i.test(message))systemMessage.content+='\nWhen creating files, return complete code in fenced blocks using a language and filename, for example ```python filename="main.py". Use single filenames without paths. For a requested Windows EXE provide complete Python source; the desktop builds it with PyInstaller. Never present text renamed to .exe. Prefer Python standard library when possible. Do not claim saving or building succeeded; the app reports actual results.';
+          if(/\.(?:py|exe|js|html|css|json|txt|cpp|ps1)\b|(?:erstelle|schreib|programmiere|entwickle|create|build).{0,80}(?:datei|file|programm|app|tool)/i.test(message))systemMessage.content+='\nWhen creating files, return complete code in fenced blocks using a language and filename, for example ```python filename="main.py". For project edits, preserve relative file paths from the supplied source snapshot in filename attributes. Return the complete updated contents of changed files. Never use absolute paths or parent traversal. For a requested Windows EXE provide complete Python source; the desktop builds it with PyInstaller. Never present text renamed to .exe. Prefer Python standard library when possible. Do not claim saving or building succeeded; the app reports actual results.';
           const promptHash=hash(systemMessage.content);
           const historyItems=attachments.historyMessages(history,uploaded);
           const allContextAttachments=[...uploaded,...historyItems.flatMap(item=>item.attachments)];

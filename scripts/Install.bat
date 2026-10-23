@@ -29,7 +29,7 @@ exit /b 0
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$ReleaseVersion = '1.7.0'
+$ReleaseVersion = '1.8.0'
 $SetupName = "Stelex-GPT-Setup-$ReleaseVersion.exe"
 $ReleaseUrl = "https://github.com/stelexacc/New/releases/download/v$ReleaseVersion"
 $TaskDirectory = $null
