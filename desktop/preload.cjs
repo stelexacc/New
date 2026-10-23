@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('stelex', Object.freeze({
 }));
 
 contextBridge.exposeInMainWorld('stelexDesktop', Object.freeze({
+  getWebLink: () => ipcRenderer.invoke('stelex:web-link'),
+  importWebLink: () => ipcRenderer.invoke('stelex:web-import'),
+  disconnectWebLink: () => ipcRenderer.invoke('stelex:web-disconnect'),
   beginVoiceCapture: () => ipcRenderer.invoke('stelex:begin-voice'),
   endVoiceCapture: () => ipcRenderer.invoke('stelex:end-voice'),
   transcribeAudio: (value) => ipcRenderer.invoke('stelex:transcribe', value),

@@ -1,6 +1,6 @@
 {
   "name": "stelex-gpt",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
   "description": "Stelex GPT desktop workspace with plans, percentage quotas, accounts and admin control",

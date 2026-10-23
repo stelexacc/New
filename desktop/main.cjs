@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -15,7 +15,7 @@ const appRoot = path.resolve(__dirname, '..');
 const dataRoot = app.getPath('userData');
 const windows = new Set();
 const adminWindows = new WeakMap();
-let backend;let sharedService;
+let backend;let sharedService;let webLink;
 let activeUrl;
 let localUrl;
 let settings = {};
@@ -36,7 +36,7 @@ async function finishSmoke(result) {
   try {
     await fs.mkdir(path.dirname(smokeFile), { recursive: true });
     await fs.writeFile(smokeFile, `${JSON.stringify(result)}\n`, { mode: 0o600 });
-  } finally { quitting = true; backend?.kill();sharedService?.release(); if (result.ok) app.quit(); else app.exit(1); }
+  } finally { quitting = true; webLink?.stop(); backend?.kill();sharedService?.release(); if (result.ok) app.quit(); else app.exit(1); }
 }
 async function inspectSmoke(window, admin) {
   if (!smokeFile || smokeFinished) return;
@@ -363,6 +363,39 @@ else {
       });return outputWrite;
     });
     ipcMain.handle('stelex:external', (event, value) => { validSender(event); return openExternal(value); });
+    if(!isAdminLaunch && localUrl){
+      webLink=require('./web-link.cjs').createWebLink({directory:dataRoot,safeStorage,expectedOrigin:require('../config/web.json').siteUrl,localOrigin:localUrl,handle:async(kind,p)=>{
+        if(kind==='folder')return{path:outputDirectory};
+        if(kind==='cancel-voice'){voiceJobs.get('web-voice')?.controller.abort();return{ok:true};}
+        if(kind==='generation-status')return generationStatus.get(p.requestId)||{stage:'preparing'};
+        if(kind==='voice'){
+          if(voiceJobs.size)throw Error('Spracherkennung ist bereits aktiv.');
+          if(!p.value||typeof p.value.audio!=='string'||p.value.audio.length>2600000||!['de','en'].includes(p.value.language))throw Error('Ungueltige Audioanfrage.');
+          const c=new AbortController(),id='web-voice';voiceJobs.set(id,{controller:c,owner:null});
+          try{return await require('./voice.cjs').transcribe({...p.value,resourcesPath:app.isPackaged?process.resourcesPath:appRoot,runtimeDirectory:app.isPackaged?undefined:path.join(appRoot,'artifacts','voice-runtime'),signal:c.signal});}finally{voiceJobs.delete(id);}
+        }
+        if(kind==='generate'||kind==='save'){
+          if(!outputDirectory)throw Error('Zuerst in der Windows-App einen Ausgabeordner auswaehlen.');
+          outputWrite=outputWrite.catch(()=>{}).then(async()=>{
+            if(kind==='save')return saveArtifact(outputDirectory,p.value);
+            const v=p.value;if(!v||typeof v.content!=='string'||v.content.length>1000000||typeof v.requestText!=='string'||v.requestText.length>20000||!/^[a-f0-9-]{36}$/i.test(v.requestId||''))throw Error('Ungueltiger Dateiauftrag.');
+            return require('./generation-jobs.cjs').generateFiles({directory:outputDirectory,dataRoot,python:path.join(app.getPath('appData'),'Stelex GPT','tools','python-builder','Scripts','python.exe'),...v,onProgress:x=>generationStatus.set(v.requestId,x)});
+          });return outputWrite;
+        }
+        throw Error('Vorgang nicht unterstuetzt.');
+      }});
+      await webLink.restore();
+    }
+    ipcMain.handle('stelex:web-link',(event)=>{validSender(event);return webLink?.state()||{connected:false};});
+    ipcMain.handle('stelex:web-disconnect',async(event)=>{validSender(event);return webLink?.disconnect();});
+    ipcMain.handle('stelex:web-import',async(event)=>{
+      const window=validSender(event);if(!webLink)throw Error('Website-Verbindung nur im lokalen Kundenmodus verfuegbar.');
+      const selected=await dialog.showOpenDialog(window,{title:'Stelex-Verbindungsdatei importieren',filters:[{name:'Stelex-Verbindung',extensions:['json']}],properties:['openFile']});if(selected.canceled)return{canceled:true};
+      const stat=await fs.stat(selected.filePaths[0]);if(stat.size>5000)throw Error('Datei ungueltig.');
+      const value=JSON.parse(await fs.readFile(selected.filePaths[0],'utf8'));require('./web-link.cjs').validateLink(value,require('../config/web.json').siteUrl);
+      const answer=await dialog.showMessageBox(window,{type:'question',title:'Website mit deinem PC verbinden?',message:value.siteUrl,detail:'Die Website darf ueber dein Konto KI-Anfragen stellen, GitHub verwenden sowie Dateien im gewaehlten Ausgabeordner speichern und dort angeforderte EXE-Builds ausfuehren. Nur fuer deine eigene Website aktivieren. Du kannst die Verbindung jederzeit beenden.',buttons:['Abbrechen','Verbinden'],defaultId:0,cancelId:0});
+      if(answer.response!==1)return{canceled:true};return webLink.connect(value);
+    });
     buildMenu();
     createWindow(isAdminLaunch);
     app.on('activate', () => { if (windows.size === 0) createWindow(isAdminLaunch); });
@@ -372,5 +405,5 @@ else {
     app.quit();
   });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('before-quit', () => { quitting = true; backend?.kill();sharedService?.release(); });
+  app.on('before-quit', () => { quitting = true; webLink?.stop(); backend?.kill();sharedService?.release(); });
 }

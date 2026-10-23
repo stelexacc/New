@@ -1,0 +1,7 @@
+export async function bridgeCall(kind,value,signal){const created=await fetch('/bridge/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,...value}),signal});const data=await created.json();if(!created.ok)throw Error(data.error||'PC nicht verbunden.');const until=Date.now()+650000;while(Date.now()<until){if(signal?.aborted)throw new DOMException('Abgebrochen','AbortError');const response=await fetch('/bridge/jobs/'+data.id,{signal});const result=await response.json();if(response.status===202){await new Promise(r=>setTimeout(r,650));continue;}if(!response.ok)throw Error(result.error||'Verbindungsfehler.');void fetch('/bridge/jobs/'+data.id,{method:'DELETE'});if(result.error)throw Error(result.error);return result.value;}throw Error('PC-Verbindung: Zeitlimit erreicht.');}
+export function enableBrowserLink(){window.stelexDesktop=Object.freeze({
+ beginVoiceCapture:async()=>({ok:true}),endVoiceCapture:async()=>({ok:true}),
+ transcribeAudio:value=>bridgeCall('voice',{value}),cancelTranscription:()=>bridgeCall('cancel-voice',{}),
+ getOutputDirectory:()=>bridgeCall('folder',{}),chooseOutputDirectory:async()=>{throw Error('Ausgabeordner bitte zuerst in der verbundenen Windows-App auswählen.');},
+ generateFiles:value=>bridgeCall('generate',{value}),getGenerationStatus:requestId=>bridgeCall('generation-status',{requestId}),saveArtifact:value=>bridgeCall('save',{value})
+});}

@@ -8,6 +8,7 @@ name: Build and verify Stelex GPT Windows release
       - 'scripts/**'
       - 'src/**'
       - 'config/**'
+      - 'web/**'
       - 'public/**'
       - 'server/**'
       - 'desktop/**'
@@ -53,6 +54,7 @@ jobs:
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
           [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Voice.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          foreach($script in @('Select-Components.ps1','Setup-Selected.ps1')){[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd ('scripts\'+$script)), [ref]$tokens, [ref]$errors) | Out-Null;if($errors.Count -gt 0){throw ($errors | Out-String)}}
           $raw = [IO.File]::ReadAllText((Join-Path $pwd 'scripts\Install.bat'))
           $marker = '# STELEX_BOOTSTRAP_POWERSHELL'
           $offset = $raw.LastIndexOf($marker, [StringComparison]::Ordinal)
@@ -276,6 +278,8 @@ jobs:
           $mainInstaller = Start-Process -FilePath $mainSetup -ArgumentList '/S' -Wait -PassThru
           if ($mainInstaller.ExitCode -ne 0) { throw 'The application installer failed.' }
           $mainDirectory = Join-Path $env:LOCALAPPDATA 'Programs\Stelex GPT'
+          $components = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $mainDirectory 'Select-Components.ps1') -CheckOnly | ConvertFrom-Json
+          if(@($components.models).Count -ne 1 -or $components.python -ne $false){throw 'Compact default selection is invalid.'}
           $installedPackage = Get-Content -LiteralPath (Join-Path $mainDirectory 'resources\app\package.json') -Raw | ConvertFrom-Json
           if ($installedPackage.version -ne $env:RELEASE_VERSION) { throw 'The installed application has the wrong version.' }
           Invoke-StelexSmoke (Join-Path $mainDirectory 'Stelex GPT.exe') 'installed-app' 'app'

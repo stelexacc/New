@@ -1,5 +1,6 @@
 #Requires -Version 5.1
 param(
+    [string[]]$SelectedModels = @(),
     [ValidateNotNullOrEmpty()][string]$Model = "qwen3.5-abliterated:9b",
     [ValidateNotNullOrEmpty()][string]$SourceModel = "huihui_ai/qwen3.5-abliterated:9b"
 )
@@ -95,6 +96,15 @@ try {
     $CatalogPath = Join-Path $PSScriptRoot 'models.json'
     if (-not (Test-Path -LiteralPath $CatalogPath)) { $CatalogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\models.json' }
     $Catalog = @(Get-Content -LiteralPath $CatalogPath -Encoding UTF8 -Raw | ConvertFrom-Json)
+    if ($SelectedModels.Count -eq 0) {
+        $SelectionFile = Join-Path $PSScriptRoot 'selected-components.json'
+        if (Test-Path -LiteralPath $SelectionFile) {
+            $Selection = Get-Content -LiteralPath $SelectionFile -Encoding UTF8 -Raw | ConvertFrom-Json
+            $SelectedModels = @($Selection.models)
+        } else { $SelectedModels = @('stelex-qwen35-hauhau:9b') }
+    }
+    $Catalog = @($Catalog | Where-Object { $SelectedModels -contains $_.id })
+    if ($Catalog.Count -eq 0) { Write-Host 'No local model selected. Configure an external provider or rerun component setup.'; exit 0 }
     $Verified = @()
     $Failures = @()
     foreach ($Item in $Catalog) {

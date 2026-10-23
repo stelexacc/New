@@ -1,4 +1,6 @@
 import http from 'node:http';
+import {createIntegrations} from './integrations.mjs';
+import {reviewAnswer} from './reviewer.mjs';
 import {mintOfflineCode,verifyOfflineCode} from './offline-codes.mjs';
 import {importLegacyAdmin} from './legacy-admin.mjs';
 import { ollamaChat } from './ollama.mjs';
@@ -127,6 +129,7 @@ export async function createApp(options = {}) {
   `);
   db.exec('CREATE TABLE IF NOT EXISTS message_metrics(messageId TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,elapsedMs INTEGER NOT NULL)');
   const plans = initializePlans(db);
+  const integrations=createIntegrations({db,dataDirectory:dbPath===':memory:'?null:dirname(resolve(dbPath)),fetchImpl:options.githubFetch||fetch});
   importLegacyAdmin(db,options.legacyAdminDb);
   const prompts = initializePrompts(db);
   const offlinePublicKey=options.offlinePublicKey;
@@ -283,7 +286,7 @@ export async function createApp(options = {}) {
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
-        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.6.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
+        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.7.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
       }
       if (method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(path)) {
         limit(request, 'auth-ip', 300);
@@ -409,6 +412,13 @@ export async function createApp(options = {}) {
       }
       if (path.startsWith('/api/')) {
         const user = currentUser(request);
+        if(path==='/api/integrations' && method==='GET')return json(200,integrations.state(user.id));
+        if(path==='/api/integrations' && method==='PUT')return json(200,await integrations.configure(user.id,await readJson(request),models));
+        if(path==='/api/github/repos' && method==='GET')return json(200,await integrations.repos(user.id));
+        if(path==='/api/github/tree' && method==='GET')return json(200,await integrations.tree(user.id,url.searchParams.get('repository'),url.searchParams.get('ref')));
+        if(path==='/api/github/file' && method==='GET')return json(200,await integrations.file(user.id,url.searchParams.get('repository'),url.searchParams.get('path'),url.searchParams.get('ref')));
+        if(path==='/api/github/proposals' && method==='POST')return json(200,integrations.propose(user.id,await readJson(request,1100000)));
+        if(path==='/api/github/confirm' && method==='POST')return json(200,await integrations.confirm(user.id,(await readJson(request)).proposalId));
         if (method === 'GET' && path === '/api/me') return json(200,accountState(user.id));
         const attachmentMatch=path.match(/^\/api\/attachments\/([a-f0-9-]{36})$/);
         if (attachmentMatch && method==='GET') {
@@ -562,8 +572,11 @@ export async function createApp(options = {}) {
           const maxOutputTokens = Math.min(options.maxOutputTokens ?? plan.maxOutputTokens,plan.maxOutputTokens,model.maxOutputTokens ?? 32768);
           const estimatedInput = 64+estimatedMessageTokens(systemMessage)+historyItems.reduce((sum,item)=>sum+estimatedMessageTokens(item.message,item.attachments),0)+estimatedMessageTokens(currentMessage,uploaded);
           const maxInputTokens = options.aiTransport==='ollama-native' ? Math.max(estimatedInput,512+requestMessages.reduce((sum,item)=>sum+Buffer.byteLength(typeof item.content==='string'?item.content:JSON.stringify(item.content)),0)) : estimatedInput;
-          const multiplier=model.multiplier ?? 1;
-          const reservation = demoMode ? 0 : Math.ceil((maxInputTokens + maxOutputTokens)*multiplier / TOKENS_PER_CREDIT);
+          const reviewSettings=integrations.reviewer(user.id);
+          const reviewModel=reviewSettings.enabled?models.find(m=>m.id===reviewSettings.model):null;
+          if(reviewSettings.enabled && (!reviewModel||reviewModel.available===false||(reviewModel.tier??0)>plan.modelTier||options.aiTransport!=='ollama-native'))throw new HttpError(409,'Pruefermodell nicht verfuegbar. In Integrationen anpassen.','REVIEWER_UNAVAILABLE');
+          const multiplier=Math.max(model.multiplier??1,reviewModel?.multiplier??1);
+          const reservation = demoMode ? 0 : Math.ceil((maxInputTokens + maxOutputTokens + (reviewModel?maxInputTokens+maxOutputTokens*4+1024:0))*multiplier / TOKENS_PER_CREDIT);
           let heldCredits=0;let heldQuota=0;
           if (!demoMode && !baseUrl) throw new HttpError(503, 'AI provider is not configured.', 'PROVIDER_UNAVAILABLE');
           const generationStartedAt=Date.now();
@@ -613,7 +626,15 @@ export async function createApp(options = {}) {
               inputTokens = payload.usage?.prompt_tokens; outputTokens = payload.usage?.completion_tokens;
               if (typeof content !== 'string' || !content.trim() || content.length > 1_000_000 || !integer(inputTokens, 0, maxInputTokens) || !integer(outputTokens, 0, maxOutputTokens)) throw new HttpError(502, 'The AI provider returned an invalid response or missing usage. Credits were returned.', 'INVALID_PROVIDER_RESPONSE');
               }
-              charge = Math.ceil((inputTokens + outputTokens)*multiplier / TOKENS_PER_CREDIT);
+              let weightedTokens=(inputTokens+outputTokens)*(model.multiplier??1);
+              if(reviewModel){
+                const reviewerName=reviewModel.upstreamModel||reviewModel.id;
+                if(lastLocalModel!==reviewerName){try{const unload=await fetchProvider(`${new URL(baseUrl).origin}/api/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:lastLocalModel,keep_alive:0}),signal:AbortSignal.timeout(10000)});await unload.body?.cancel();}catch{}}
+                lastLocalModel=reviewerName;
+                try{const reviewed=await reviewAnswer({draft:content,messages:requestMessages,model:reviewModel,baseUrl,fetchImpl:fetchProvider,signal:AbortSignal.any([providerShutdown.signal,AbortSignal.timeout(options.providerTimeoutMs??600000)]),onProgress:update=>setProgress(user.id,requestId,update),ollamaChat,maxOutputTokens:Math.min(maxOutputTokens,1024)});content=reviewed.content;weightedTokens+=(reviewed.inputTokens+reviewed.outputTokens)*(reviewModel.multiplier??1);inputTokens+=reviewed.inputTokens;outputTokens+=reviewed.outputTokens;}catch(error){throw new HttpError(502,'Pruefung fehlgeschlagen: '+error.message,'REVIEWER_FAILED');}
+              }
+              charge = Math.ceil(weightedTokens / TOKENS_PER_CREDIT);
+              if(charge>reservation)throw new HttpError(502,'Model usage exceeds the reserved bound.','INVALID_PROVIDER_RESPONSE');
               providerObservation = { reachable: true, checkedAt: iso() };
             }
             const time = iso();

@@ -29,7 +29,7 @@ exit /b 0
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$ReleaseVersion = '1.6.0'
+$ReleaseVersion = '1.7.0'
 $SetupName = "Stelex-GPT-Setup-$ReleaseVersion.exe"
 $ReleaseUrl = "https://github.com/stelexacc/New/releases/download/v$ReleaseVersion"
 $TaskDirectory = $null
@@ -95,12 +95,16 @@ try {
     }
     $InstalledPackage = Get-Content -LiteralPath $PackageFile -Raw | ConvertFrom-Json
     if ($InstalledPackage.version -ne $ReleaseVersion) { throw 'The installed version does not match this installer / Installierte Version stimmt nicht ueberein.' }
+    $ComponentSetup = Join-Path $InstallDirectory 'Select-Components.ps1'
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $ComponentSetup
+    if ($LASTEXITCODE -ne 0) { throw 'Component selection was canceled or failed.' }
+    $Selected = Get-Content -LiteralPath (Join-Path $InstallDirectory 'selected-components.json') -Raw | ConvertFrom-Json
     $PythonSetup = Join-Path $InstallDirectory 'Setup-Python.ps1'
     if (-not (Test-Path -LiteralPath $PythonSetup -PathType Leaf)) { throw 'Python builder setup is missing.' }
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonSetup
-    if ($LASTEXITCODE -ne 0) { throw 'Python EXE builder setup failed. Rerun Install.bat after fixing the error.' }
+    if ($Selected.python) { & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonSetup }
+    if ($Selected.python -and $LASTEXITCODE -ne 0) { throw 'Python EXE builder setup failed. Rerun Install.bat after fixing the error.' }
     $VoiceSetup = Join-Path $InstallDirectory 'Setup-Voice.ps1'
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $VoiceSetup
+    if ($Selected.voice) { & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $VoiceSetup }
     if ($LASTEXITCODE -ne 0) { Write-Host 'Voice module needs attention. Chat still works; rerun Setup-Voice.ps1 after fixing its reported error.' -ForegroundColor Yellow }
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $ModelSetup
     if ($LASTEXITCODE -ne 0) { throw 'The model setup failed. Stelex was not started / Modelleinrichtung fehlgeschlagen. Stelex wurde nicht gestartet.' }
