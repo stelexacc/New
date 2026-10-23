@@ -116,7 +116,7 @@ try {
   await fs.rm(path.join(packageRoot, 'resources', 'default_app.asar'), { force: true });
   const appDir = path.join(packageRoot, 'resources', 'app');
   await fs.mkdir(appDir, { recursive: true });
-  for (const directory of ['dist', 'server', 'desktop']) {
+  for (const directory of ['dist', 'server', 'desktop','config']) {
     await fs.cp(path.join(root, directory), path.join(appDir, directory), { recursive: true, filter: (source) => !privateInput(path.basename(source)) });
   }
   await fs.mkdir(path.join(appDir, 'node_modules'), { recursive: true });
@@ -124,21 +124,24 @@ try {
     await fs.cp(path.join(root, 'node_modules', dependency), path.join(appDir, 'node_modules', dependency), { recursive: true });
   }
   await fs.writeFile(path.join(appDir, 'package.json'), `${JSON.stringify({ name: 'stelex-gpt', productName: 'Stelex GPT', version: packageJson.version, private: true, main: 'desktop/entry.cjs', type: 'module', stelexRole:'combined' }, null, 2)}\n`);
+  await fs.access(path.join(artifactRoot,'voice-runtime','voice-manifest.json'));
+  await fs.cp(path.join(artifactRoot,'voice-runtime'),path.join(packageRoot,'resources','voice'),{recursive:true});
   await fs.mkdir(path.join(packageRoot, 'resources', 'runtime'), { recursive: true });
   await fs.copyFile(nodeExe, path.join(packageRoot, 'resources', 'runtime', 'node.exe'));
   await download(`https://raw.githubusercontent.com/nodejs/node/v${nodeVersion}/LICENSE`, path.join(packageRoot, 'resources', 'runtime', 'NODE-LICENSE.txt'));
-  const extraFiles = ['scripts/Install.bat', 'scripts/Setup-Ollama.ps1', 'scripts/Setup-Python.ps1', 'README.md', 'VALIDATION.md'];
+  await fs.copyFile(path.join(root,'config','models.json'),path.join(packageRoot,'models.json'));
+  const extraFiles = ['scripts/Install.bat', 'scripts/Setup-Ollama.ps1', 'scripts/Setup-Python.ps1','scripts/Setup-Voice.ps1', 'README.md', 'VALIDATION.md'];
   for (const file of extraFiles) {
     try { await fs.copyFile(path.join(root, file), path.join(packageRoot, path.basename(file))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
-  const readme = `STELEX GPT — WINDOWS x64\r\n\r\nDEUTSCH\r\n1. ZIP vollständig entpacken. Nicht nur die EXE kopieren.\r\n2. Install.bat einmal ausfuehren. Es installiert Ollama und prueft das Modell.\r\n3. Modellquelle: huihui_ai/qwen3.5-abliterated:9b; lokaler Alias: qwen3.5-abliterated:9b.\r\n4. Danach Stelex GPT.exe starten. Ist kein Ollama-Modell verfügbar, erscheint der gekennzeichnete kostenlose Demomodus.\r\n5. Ausgabeordner über die Ordner-Schaltfläche wählen; erzeugte Dateien werden automatisch gespeichert; angeforderte Python-EXEs werden mit dem lokalen Builder gebaut.\r\n6. Stelex Admin.exe ist enthalten und durch den privaten Zugangscode geschützt; beide Apps teilen denselben lokalen Dienst.\r\n\r\nNeue STXO1-Codes sind offline auf anderen PCs einlösbar, einmal pro lokaler Datenbank; keine globale Sperre gegen Kopien. Konten und Protokolle bleiben lokal. Keine API-Schlüssel oder Admin-Token sind in diesem Paket enthalten.\r\n\r\nENGLISH\r\n1. Extract the complete ZIP. Do not copy the EXE on its own.\r\n2. Run Install.bat once. It installs Ollama and verifies the model.\r\n3. Source: huihui_ai/qwen3.5-abliterated:9b; local alias: qwen3.5-abliterated:9b.\r\n4. Then launch Stelex GPT.exe. If no Ollama model is available, the app clearly labels its free demo mode.\r\n5. Choose an output folder using the folder button; generated files are saved automatically; requested Python EXEs are compiled with the local builder.\r\n6. Stelex Admin.exe is included, protected by its private unlock code; both apps share the same local service.\r\n\r\nNew STXO1 codes work offline on other PCs, once per local database with no global reuse prevention. Accounts and logs remain local. This package contains no API keys or admin tokens.\r\n\r\nSupport / Kauf / Purchase: https://discord.gg/stelex\r\n\r\nElectron ${electronVersion}; Node ${nodeVersion}. Windows execution must be verified on a Windows machine.\r\n`;
+  const readme = `STELEX GPT — WINDOWS x64\r\n\r\nDEUTSCH\r\n1. ZIP vollständig entpacken. Nicht nur die EXE kopieren.\r\n2. Install.bat einmal ausfuehren. Es installiert den EXE-Builder, prueft das Sprachmodul und laedt/prueft alle vier Chatmodelle.\r\n3. Modellquelle: huihui_ai/qwen3.5-abliterated:9b; lokaler Alias: qwen3.5-abliterated:9b.\r\n4. Danach Stelex GPT.exe starten. Fehlende Modelle werden mit einem Installationshinweis angezeigt.\r\n5. Ausgabeordner über die Ordner-Schaltfläche wählen; erzeugte Dateien werden automatisch gespeichert; angeforderte Python-EXEs werden mit dem lokalen Builder gebaut.\r\n6. Stelex Admin.exe ist enthalten und durch den privaten Zugangscode geschützt; beide Apps teilen denselben lokalen Dienst.\r\n\r\nNeue STXO1-Codes sind offline auf anderen PCs einlösbar, einmal pro lokaler Datenbank; keine globale Sperre gegen Kopien. Konten und Protokolle bleiben lokal. Keine API-Schlüssel oder Admin-Token sind in diesem Paket enthalten.\r\n\r\nENGLISH\r\n1. Extract the complete ZIP. Do not copy the EXE on its own.\r\n2. Run Install.bat once. It configures the EXE builder and offline speech, then downloads and verifies all four chat models.\r\n3. Source: huihui_ai/qwen3.5-abliterated:9b; local alias: qwen3.5-abliterated:9b.\r\n4. Then launch Stelex GPT.exe. Missing models are shown with an installation hint.\r\n5. Choose an output folder using the folder button; generated files are saved automatically; requested Python EXEs are compiled with the local builder.\r\n6. Stelex Admin.exe is included, protected by its private unlock code; both apps share the same local service.\r\n\r\nNew STXO1 codes work offline on other PCs, once per local database with no global reuse prevention. Accounts and logs remain local. This package contains no API keys or admin tokens.\r\n\r\nSupport / Kauf / Purchase: https://discord.gg/stelex\r\n\r\nElectron ${electronVersion}; Node ${nodeVersion}. Windows execution must be verified on a Windows machine.\r\n`;
   await fs.writeFile(path.join(packageRoot, 'START-HERE.txt'), readme);
   const zipPath = path.join(artifactRoot, 'Stelex-GPT-Windows-x64.zip');
   console.log('Compressing Windows portable package…');
   await zipDirectory(packageRoot, zipPath);
   // Do not publish a stale package if another build or edit changed inputs
   // while the portable directory was being copied or compressed.
-  for (const directory of ['dist', 'server', 'desktop']) {
+  for (const directory of ['dist', 'server', 'desktop','config']) {
     if (await treeFingerprint(path.join(root, directory)) !== await treeFingerprint(path.join(appDir, directory))) {
       await fs.rm(zipPath, { force: true });
       throw new Error(`${directory} changed during packaging. Finish the build/edits and rerun packaging.`);

@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld('stelex', Object.freeze({
 }));
 
 contextBridge.exposeInMainWorld('stelexDesktop', Object.freeze({
+  beginVoiceCapture: () => ipcRenderer.invoke('stelex:begin-voice'),
+  endVoiceCapture: () => ipcRenderer.invoke('stelex:end-voice'),
+  transcribeAudio: (value) => ipcRenderer.invoke('stelex:transcribe', value),
+  cancelTranscription: (requestId) => ipcRenderer.invoke('stelex:cancel-voice', requestId),
   getOutputDirectory: () => ipcRenderer.invoke('stelex:output-directory'),
   chooseOutputDirectory: () => ipcRenderer.invoke('stelex:choose-output-directory'),
   generateFiles: (value) => ipcRenderer.invoke('stelex:generate-files', value),

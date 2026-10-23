@@ -92,32 +92,47 @@ try {
         if (-not $OllamaReady) { throw "Ollama did not become ready. / Ollama konnte nicht gestartet werden." }
     }
 
-    $Installed = @(Get-InstalledModels)
-    if ($Installed -notcontains $SourceModel) {
-        & $OllamaPath pull $SourceModel
-        if ($LASTEXITCODE -ne 0) { throw "Download failed for '$SourceModel' (exit $LASTEXITCODE). The model source may be unavailable. / Modelldownload fehlgeschlagen. Internet, Modellquelle und aktuelle Ollama-Version pruefen." }
+    $CatalogPath = Join-Path $PSScriptRoot 'models.json'
+    if (-not (Test-Path -LiteralPath $CatalogPath)) { $CatalogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\models.json' }
+    $Catalog = @(Get-Content -LiteralPath $CatalogPath -Encoding UTF8 -Raw | ConvertFrom-Json)
+    $Verified = @()
+    $Failures = @()
+    foreach ($Item in $Catalog) {
+        $Alias = [string]$Item.id
+        $Source = [string]$Item.source
+        Write-Host ("Installing / Installiere: " + $Item.name) -ForegroundColor Cyan
+        try {
+            $Installed = @(Get-InstalledModels)
+            if ($Installed -notcontains $Source) {
+                & $OllamaPath pull $Source
+                if ($LASTEXITCODE -ne 0) { throw ('Model download failed: ' + $Source) }
+            }
+            $Temporary = Join-Path ([IO.Path]::GetTempPath()) ('Stelex-Model-' + [Guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $Temporary | Out-Null
+            try {
+                $Modelfile = Join-Path $Temporary 'Modelfile'
+                $Parameters = @(('FROM ' + $Source), 'PARAMETER num_ctx 4096', 'PARAMETER temperature 0.8', 'PARAMETER top_p 0.9', 'PARAMETER top_k 40', 'PARAMETER repeat_penalty 1.1')
+                [IO.File]::WriteAllText($Modelfile, ($Parameters -join [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+                & $OllamaPath create $Alias -f $Modelfile
+                if ($LASTEXITCODE -ne 0) { throw ('Ollama cannot import this model. Update Ollama and retry: ' + $Alias) }
+            } finally { Remove-Item -LiteralPath $Temporary -Recurse -Force -ErrorAction SilentlyContinue }
+            $Payload = @{model=$Alias;messages=@(@{role='user';content='Reply briefly with OK.'});stream=$false;keep_alive=0;options=@{num_predict=1024;num_ctx=4096;temperature=0.8;top_p=0.9;top_k=40;repeat_penalty=1.1}}
+            if ($Alias -match '(?i)qwen|gemma4') { $Payload.think = $false }
+            $Body = $Payload | ConvertTo-Json -Depth 8
+            $Reply = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/chat' -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($Body)) -TimeoutSec 900
+            if ([string]::IsNullOrWhiteSpace([string]$Reply.message.content) -or -not (Test-StelexUsageCount $Reply.prompt_eval_count) -or -not (Test-StelexUsageCount $Reply.eval_count)) { throw 'Model produced no complete, metered answer.' }
+            $Verified += $Alias
+            Write-Host ('Verified / Geprueft: ' + $Alias) -ForegroundColor Green
+        } catch {
+            $Failures += @{model=$Alias;error=$_.Exception.Message}
+            Write-Host ($Alias + ': ' + $_.Exception.Message) -ForegroundColor Yellow
+        }
     }
-    $Installed = @(Get-InstalledModels)
-    if ($Installed -notcontains $SourceModel) { throw "The requested model source is not installed: $SourceModel / Die Modellquelle wurde nicht installiert." }
-
-    if ($Model -ne $SourceModel) {
-        & $OllamaPath cp $SourceModel $Model
-        if ($LASTEXITCODE -ne 0) { throw "Could not create local model alias '$Model'. / Lokaler Modellname konnte nicht erstellt werden." }
-    }
-    $Installed = @(Get-InstalledModels)
-    if ($Installed -notcontains $Model) { throw "Stelex model alias is missing: $Model / Der Stelex-Modellname fehlt." }
-
-    Write-Host "Testing a real model reply / Echte Modellantwort wird geprueft ..."
-    $Body = @{ model = $Model; messages = @(@{ role = "user"; content = "Reply briefly with OK." }); stream = $false; think = $false; options = @{ num_predict = 32 } } | ConvertTo-Json -Depth 6
-    $Response = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/chat" -Method Post -ContentType "application/json" -Body ([System.Text.Encoding]::UTF8.GetBytes($Body)) -TimeoutSec 900
-    if (-not $Response.message -or [string]::IsNullOrWhiteSpace([string]$Response.message.content)) { throw "The model returned no reply. / Das Modell hat keine Antwort geliefert." }
-    if (-not (Test-StelexUsageCount ($Response.prompt_eval_count)) -or -not (Test-StelexUsageCount ($Response.eval_count))) { throw "Ollama returned no valid usage counts / Verbrauchsdaten fehlen." }
-    Write-Host "Installation complete. / Installation abgeschlossen." -ForegroundColor Green
-    Write-Host "Model verified: $Model. You can now start Stelex GPT.exe. / Modell geprueft. Jetzt Stelex GPT.exe starten."
+    if ($Verified.Count -eq 0) { throw 'No model could be started. Check Ollama, free disk space, RAM and the internet connection.' }
+    if ($Failures.Count -gt 0) { Write-Host 'Some models are not ready. Available models still work. Rerun model setup after fixing the reported errors.' -ForegroundColor Yellow }
+    Write-Host ('Ready / Bereit: ' + $Verified.Count + ' / ' + $Catalog.Count + ' models. GPU offload is automatic; context is 4096.')
     exit 0
 } catch {
-    Write-Host "";
-    Write-Host ("Setup failed / Einrichtung fehlgeschlagen: " + $_.Exception.Message) -ForegroundColor Red
-    Write-Host "Stelex was not marked ready. Fix the error and rerun Install.bat. / Fehler beheben und Install.bat erneut starten."
+    Write-Host ('Setup failed / Einrichtung fehlgeschlagen: ' + $_.Exception.Message) -ForegroundColor Red
     exit 1
 }

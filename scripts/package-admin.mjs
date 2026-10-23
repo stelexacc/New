@@ -114,7 +114,7 @@ try {
   await fs.rm(path.join(packageRoot, 'resources', 'default_app.asar'), { force: true });
   const appDir = path.join(packageRoot, 'resources', 'app');
   await fs.mkdir(appDir, { recursive: true });
-  for (const directory of ['dist', 'server', 'desktop']) {
+  for (const directory of ['dist', 'server', 'desktop','config']) {
     await fs.cp(path.join(root, directory), path.join(appDir, directory), { recursive: true, filter: (source) => !privateInput(path.basename(source)) });
   }
   await fs.mkdir(path.join(appDir, 'node_modules'), { recursive: true });

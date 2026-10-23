@@ -1,10 +1,10 @@
 // Native Ollama streaming: the answer is streamed; private reasoning is never exposed.
-export async function ollamaChat({baseUrl,fetchImpl=fetch,model,messages,maxOutputTokens,signal,onProgress=()=>{}}){
+export async function ollamaChat({baseUrl,fetchImpl=fetch,model,messages,maxOutputTokens,signal,onProgress=()=>{},supportsThinking=true,contextWindow=4096,temperature=0.8,topP=0.9,topK=40,repeatPenalty=1.1}){
   const origin=new URL(baseUrl).origin;
   const converted=messages.map(item=>{if(typeof item.content==='string')return item;const text=item.content.filter(p=>p.type==='text').map(p=>p.text).join('\n');const images=item.content.filter(p=>p.type==='image_url').map(p=>p.image_url.url.split(',')[1]);return{role:item.role,content:text,...(images.length?{images}:{})};});
   const failure=(code,message)=>Object.assign(new Error(message),{code});
   let response;
-  try{response=await fetchImpl(`${origin}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:converted,stream:true,think:false,keep_alive:'15m',options:{num_predict:maxOutputTokens,num_ctx:8192}}),signal});}
+  try{response=await fetchImpl(`${origin}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:converted,stream:true,...(supportsThinking?{think:false}:{}),keep_alive:'15m',options:{num_predict:maxOutputTokens,num_ctx:Math.max(1024,Math.min(8192,contextWindow)),temperature,top_p:topP,top_k:topK,repeat_penalty:repeatPenalty}}),signal});}
   catch(error){throw failure(signal?.aborted?'PROVIDER_TIMEOUT':'PROVIDER_UNAVAILABLE',signal?.aborted?'Das Modell hat zu lange gebraucht. Keine Credits abgezogen.':'Ollama ist nicht erreichbar. Ollama starten und erneut senden. Keine Credits abgezogen.');}
   if(!response.ok){let detail='';try{detail=(await response.json()).error||'';}catch{}throw failure(response.status===404?'MODEL_NOT_INSTALLED':'PROVIDER_ERROR',response.status===404?`Modell ${model} fehlt in Ollama. „Modell einrichten“ ausführen.`:`Ollama meldet HTTP ${response.status}: ${detail.slice(0,300)}. Keine Credits abgezogen.`);}
   let buffer='',content='',done,inputTokens,outputTokens,thinking=false;

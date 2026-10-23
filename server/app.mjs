@@ -21,7 +21,7 @@ const SESSION_AGE = 7 * 24 * 60 * 60 * 1000;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const iso = () => new Date().toISOString();
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
-const publicModel = ({ id, name, description, tier = 0, multiplier = 1, vision = false }) => ({ id, name, description, tier, multiplier, vision:Boolean(vision), attachments:{text:true,images:Boolean(vision)} });
+const publicModel = ({ id, name, description, tier = 0, multiplier = 1, vision = false,available=true,contextWindow }) => ({ id, name, description, tier, multiplier,available,contextWindow, vision:Boolean(vision), attachments:{text:true,images:Boolean(vision)} });
 const publicUser = user => ({ id: user.id, email: user.email, name: user.name, emailVerified: Boolean(user.emailVerified) });
 
 class HttpError extends Error {
@@ -164,6 +164,7 @@ export async function createApp(options = {}) {
   const rateLimits = new Map(); const busyUsers = new Set();
   const providerScheduler=createProviderScheduler(options.providerConcurrency ?? 2);
   const providerShutdown=new AbortController();
+  let lastLocalModel=null;
   let providerObservation = { reachable: null, checkedAt: null };
   if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) {
     try { const { EnvHttpProxyAgent } = await import('undici'); dispatcher = new EnvHttpProxyAgent(); }
@@ -282,7 +283,7 @@ export async function createApp(options = {}) {
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
-        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.5.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
+        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.6.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
       }
       if (method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(path)) {
         limit(request, 'auth-ip', 300);
@@ -592,7 +593,10 @@ export async function createApp(options = {}) {
               setProgress(user.id,requestId,{stage:'loading'});
               if(options.aiTransport==='ollama-native'){
                 try {
-                  const answer=await ollamaChat({baseUrl,fetchImpl:fetchProvider,model:model.upstreamModel||model.id,messages:requestMessages,maxOutputTokens,signal:AbortSignal.any([providerShutdown.signal,AbortSignal.timeout(options.providerTimeoutMs??600000)]),onProgress:update=>setProgress(user.id,requestId,update)});
+                  const wantedModel=model.upstreamModel||model.id;
+                  if(lastLocalModel && lastLocalModel!==wantedModel){try{const unload=await fetchProvider(`${new URL(baseUrl).origin}/api/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:lastLocalModel,keep_alive:0}),signal:AbortSignal.timeout(10000)});await unload.body?.cancel();}catch{}}
+                  lastLocalModel=wantedModel;
+                  const answer=await ollamaChat({baseUrl,fetchImpl:fetchProvider,model:wantedModel,messages:requestMessages,maxOutputTokens,supportsThinking:model.supportsThinking??/qwen3\.5|gemma4/.test(wantedModel),contextWindow:model.contextWindow||4096,temperature:model.temperature??0.8,topP:model.topP??0.9,topK:model.topK??40,repeatPenalty:model.repeatPenalty??1.1,signal:AbortSignal.any([providerShutdown.signal,AbortSignal.timeout(options.providerTimeoutMs??600000)]),onProgress:update=>setProgress(user.id,requestId,update)});
                   content=answer.content;inputTokens=answer.inputTokens;outputTokens=answer.outputTokens;
                   // Reserve a conservative upper bound separately from tokenizer estimates.
                   if(inputTokens>maxInputTokens || outputTokens>maxOutputTokens)throw Object.assign(new Error('Model usage exceeds the reserved context.'),{code:'INVALID_PROVIDER_RESPONSE'});

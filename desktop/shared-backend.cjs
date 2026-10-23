@@ -6,8 +6,8 @@ const {spawn}=require('node:child_process');
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function connectShared({root,runtime,appRoot,env,admin=false}){
   await fs.mkdir(root,{recursive:true,mode:0o700});
-  const recordFile=path.join(root,'desktop-service-1.5.json'),lockFile=recordFile+'.lock';
-  const read=async()=>{try{const item=JSON.parse(await fs.readFile(recordFile,'utf8'));const url=new URL(item.url);if(url.hostname!=='127.0.0.1'||url.protocol!=='http:'||!item.key||!item.serviceId)return null;const response=await fetch(`${url.origin}/api/health`,{signal:AbortSignal.timeout(5000)});const health=await response.json();return response.ok&&health.serviceId===item.serviceId&&health.version==='1.5.0'?item:null;}catch{return null;}};
+  const recordFile=path.join(root,'desktop-service-1.6.json'),lockFile=recordFile+'.lock';
+  const read=async()=>{try{const item=JSON.parse(await fs.readFile(recordFile,'utf8'));const url=new URL(item.url);if(url.hostname!=='127.0.0.1'||url.protocol!=='http:'||!item.key||!item.serviceId)return null;const response=await fetch(`${url.origin}/api/health`,{signal:AbortSignal.timeout(5000)});const health=await response.json();return response.ok&&health.serviceId===item.serviceId&&health.version==='1.6.0'?item:null;}catch{return null;}};
   let item=await read();
   if(!item){
     let lock;

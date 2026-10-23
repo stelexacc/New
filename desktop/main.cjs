@@ -23,10 +23,12 @@ let preferences = {};
 let outputDirectory = null;
 let outputWrite = Promise.resolve();
 const generationStatus=new Map();
+const microphoneLeases=new Map(),voiceJobs=new Map();
 let preferenceWrite = Promise.resolve();
 let quitting = false;
 const smokeFile = process.env.CI === 'true' && process.env.STELEX_SMOKE_TEST_FILE && path.isAbsolute(process.env.STELEX_SMOKE_TEST_FILE)
   ? process.env.STELEX_SMOKE_TEST_FILE : null;
+if(smokeFile && process.env.STELEX_VOICE_PERMISSION_SMOKE==='true'){app.commandLine.appendSwitch('use-fake-device-for-media-stream');app.commandLine.appendSwitch('use-fake-ui-for-media-stream');}
 let smokeFinished = false;
 async function finishSmoke(result) {
   if (!smokeFile || smokeFinished) return;
@@ -39,6 +41,7 @@ async function finishSmoke(result) {
 async function inspectSmoke(window, admin) {
   if (!smokeFile || smokeFinished) return;
   const deadline = Date.now() + 15_000;
+  let lastSmokeError;
   do {
     try {
       const state = await window.webContents.executeJavaScript(`(async () => {
@@ -47,11 +50,18 @@ async function inspectSmoke(window, admin) {
         const health = await response.json();
         return { ok: Boolean(view && response.ok && health.ok), view: ${JSON.stringify(admin ? 'admin' : 'app')}, title: document.title, demoMode: health.demoMode };
       })()`);
+      if(state.ok && !admin && process.env.STELEX_VOICE_PERMISSION_SMOKE==='true'){
+        const permissions=await window.webContents.executeJavaScript(`(async()=>{
+          await window.stelexDesktop.beginVoiceCapture();
+          let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});const audioPermissionAccepted=stream.getTracks().every(track=>track.kind==='audio');stream.getTracks().forEach(track=>track.stop());let cameraAccessDenied=false;try{const camera=await navigator.mediaDevices.getUserMedia({audio:false,video:true});camera.getTracks().forEach(track=>track.stop());}catch{cameraAccessDenied=true;}return{audioPermissionAccepted,cameraAccessDenied};}finally{stream?.getTracks().forEach(track=>track.stop());await window.stelexDesktop.endVoiceCapture();}
+        })()`);
+        Object.assign(state,permissions);state.ok=state.ok&&permissions.audioPermissionAccepted&&permissions.cameraAccessDenied;
+      }
       if (state.ok) { await finishSmoke(state); return; }
-    } catch { /* React and the loopback backend may still be starting. */ }
+    } catch(error) { lastSmokeError=error.message; }
     await new Promise(resolveWait => setTimeout(resolveWait, 200));
   } while (Date.now() < deadline && !smokeFinished);
-  await finishSmoke({ ok: false, view: admin ? 'admin' : 'app', error: 'The application did not render a healthy sign-in screen within 15 seconds.' });
+  await finishSmoke({ ok: false, view: admin ? 'admin' : 'app', error: lastSmokeError || 'The application did not render a healthy sign-in screen within 15 seconds.' });
 }
 
 function parseServerUrl(value) {
@@ -130,56 +140,27 @@ async function startInstalledOllama() {
   }
   return await new Promise(resolveStart => {
     try {
-      const child = spawn(executable, ['serve'], { windowsHide: true, detached: true, stdio: 'ignore' });
+      const child = spawn(executable, ['serve'], { env:{...process.env,OLLAMA_MAX_LOADED_MODELS:'1',OLLAMA_NUM_PARALLEL:'1'}, windowsHide: true, detached: true, stdio: 'ignore' });
       child.once('error', () => resolveStart(false));
       child.once('spawn', () => { child.unref(); resolveStart(true); });
     } catch { resolveStart(false); }
   });
 }
 
-async function detectOllama() {
-  const baseUrl = process.env.STELEX_AI_BASE_URL || 'http://127.0.0.1:11434/v1';
-  const configuredModels = process.env.STELEX_AI_MODELS;
-  const model = configuredModels || 'qwen3.5-abliterated:9b';
-  if (smokeFile && process.env.STELEX_DEMO_MODE === 'true') return { baseUrl, model, available: false };
-  if (process.env.STELEX_AI_BASE_URL) return { baseUrl, model, available: true };
-  let wanted = 'qwen3.5-abliterated:9b';
-  if (configuredModels) {
-    try {
-      const value = configuredModels.trim();
-      const first = value.startsWith('[') ? JSON.parse(value)[0] : { id: value.split(',')[0].trim() };
-      wanted = first?.upstreamModel || first?.id;
-      if (typeof wanted !== 'string' || !wanted) return { baseUrl, model, available: false };
-    } catch { return { baseUrl, model, available: false }; }
-  }
-  let actualVision = false;
-  const selection = available => ({ baseUrl, model: configuredModels || JSON.stringify([{ id: wanted, name: 'Qwen 3.5 Abliterated · 9B', vision: actualVision }]), available });
-  const inspect = async () => {
-    const response = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(1000) });
-    if (!response.ok) throw new Error('Ollama is unavailable.');
-    const data = await response.json();
-    const installed = (Array.isArray(data.models) ? data.models : []).map(entry => entry.name || entry.model);
-    const available = installed.includes(wanted);
-    if (available && !configuredModels) {
-      try {
-        const shown = await fetch('http://127.0.0.1:11434/api/show', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: wanted }), signal: AbortSignal.timeout(2000) });
-        const details = await shown.json();
-        actualVision = shown.ok && Array.isArray(details.capabilities) && details.capabilities.includes('vision');
-      } catch { actualVision = false; }
-    }
-    return available;
+async function detectOllama(){
+  const baseUrl=process.env.STELEX_AI_BASE_URL||'http://127.0.0.1:11434/v1';
+  if(process.env.STELEX_AI_BASE_URL || process.env.STELEX_AI_MODELS)return{baseUrl,model:process.env.STELEX_AI_MODELS||'qwen3.5-abliterated:9b',available:true};
+  const {localModels,catalog}=require('./model-catalog.cjs');
+  if(smokeFile && process.env.STELEX_DEMO_MODE==='true')return{baseUrl,model:JSON.stringify(localModels()),available:false};
+  const inspect=async()=>{
+    const response=await fetch('http://127.0.0.1:11434/api/tags',{signal:AbortSignal.timeout(1500)});if(!response.ok)throw Error('Ollama unavailable');
+    const data=await response.json();const names=(data.models||[]).map(entry=>entry.name||entry.model);const details={};
+    for(const item of catalog){if(!names.includes(item.id))continue;try{const show=await fetch('http://127.0.0.1:11434/api/show',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:item.id}),signal:AbortSignal.timeout(2500)});if(show.ok)details[item.id]=await show.json();}catch{}}
+    return{baseUrl,model:JSON.stringify(localModels(names,details)),available:names.length>0};
   };
-  try { const available = await inspect(); return selection(available); }
-  catch {
-    // The installed Ollama server is independent of the app and may be stopped
-    // after a reboot. Start it once; never replace a missing requested model.
-    if (!await startInstalledOllama()) return selection(false);
-    const deadline = Date.now() + 10_000;
-    do {
-      await new Promise(resolveWait => setTimeout(resolveWait, 250));
-      try { const available = await inspect(); return selection(available); } catch { /* Wait for the local server. */ }
-    } while (Date.now() < deadline);
-    return selection(false);
+  try{return await inspect();}catch{
+    if(await startInstalledOllama()){for(let n=0;n<30;n++){await new Promise(resolve=>setTimeout(resolve,250));try{return await inspect();}catch{}}}
+    return{baseUrl,model:JSON.stringify(localModels()),available:false};
   }
 }
 
@@ -207,7 +188,8 @@ function createWindow(admin = false) {
   });
   windows.add(window);
   adminWindows.set(window, admin);
-  window.on('closed', () => windows.delete(window));
+  const contentId=window.webContents.id;
+  window.on('closed', () => {windows.delete(window);microphoneLeases.delete(contentId);for(const [id,job] of voiceJobs)if(job.owner===contentId){job.controller.abort();voiceJobs.delete(id);}});
   window.once('ready-to-show', () => window.show());
   window.webContents.once('did-finish-load', () => {
     void inspectSmoke(window, admin);
@@ -229,15 +211,17 @@ function createWindow(admin = false) {
       trusted = windows.has(BrowserWindow.fromWebContents(contents)) &&
         new URL(details.requestingUrl || contents.getURL()).origin === new URL(activeUrl).origin;
     } catch { /* Invalid origins never receive permissions. */ }
-    // Copy buttons may write plain text. Reading the clipboard, microphone,
-    // camera and every other permission remain unavailable to the renderer.
-    callback(trusted && permission === 'clipboard-sanitized-write');
+    // Clipboard writes and explicitly initiated local audio capture are allowed.
+    // Camera capture and unrelated permissions remain unavailable.
+    const target=BrowserWindow.fromWebContents(contents);
+    const audio=require('./media-permissions.cjs').allowAudio({trusted,local:activeUrl===localUrl,admin:adminWindows.get(target),leaseUntil:microphoneLeases.get(contents.id),mainFrame:details.isMainFrame===true,mediaTypes:details.mediaTypes});
+    callback(trusted && permission==='clipboard-sanitized-write' || permission==='media'&&audio);
   });
-  window.webContents.session.setPermissionCheckHandler((contents, permission, requestingOrigin) => {
+  window.webContents.session.setPermissionCheckHandler((contents, permission, requestingOrigin, details) => {
     try {
-      return permission === 'clipboard-sanitized-write' &&
-        windows.has(BrowserWindow.fromWebContents(contents)) &&
-        new URL(requestingOrigin).origin === new URL(activeUrl).origin;
+      const target=BrowserWindow.fromWebContents(contents);
+      const trusted=windows.has(target)&&new URL(requestingOrigin).origin===new URL(activeUrl).origin;
+      return trusted&&permission==='clipboard-sanitized-write' || permission==='media'&&require('./media-permissions.cjs').allowAudio({trusted,local:activeUrl===localUrl,admin:adminWindows.get(target),leaseUntil:microphoneLeases.get(contents.id),mainFrame:details?.isMainFrame===true,mediaTypes:[details?.mediaType]});
     } catch { return false; }
   });
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
@@ -353,6 +337,17 @@ else {
         });
       });
       return outputWrite;
+    });
+    ipcMain.handle('stelex:begin-voice',(event)=>{const window=validSender(event);if(activeUrl!==localUrl||adminWindows.get(window))throw Error('Spracheingabe ist nur im lokalen Chat verfügbar.');microphoneLeases.set(event.sender.id,Date.now()+90000);return{ok:true};});
+    ipcMain.handle('stelex:end-voice',(event)=>{validSender(event);microphoneLeases.delete(event.sender.id);return{ok:true};});
+    ipcMain.handle('stelex:cancel-voice',(event,requestId)=>{validSender(event);const job=voiceJobs.get(requestId);if(job?.owner===event.sender.id)job.controller.abort();return{ok:true};});
+    ipcMain.handle('stelex:transcribe',(event,value)=>{
+      const window=validSender(event);if(activeUrl!==localUrl||adminWindows.get(window))throw Error('Lokale Spracheingabe ist hier nicht verfügbar.');
+      if(!value||!/^[a-f0-9-]{36}$/i.test(value.requestId||'')||typeof value.audio!=='string'||value.audio.length>2600000||!['de','en'].includes(value.language))throw Error('Ungültige Sprachanfrage.');
+      if(voiceJobs.size)throw Error('Eine Spracherkennung läuft bereits.');
+      const controller=new AbortController();voiceJobs.set(value.requestId,{controller,owner:event.sender.id});microphoneLeases.delete(event.sender.id);
+      const resourcesPath=app.isPackaged?process.resourcesPath:path.join(appRoot,'artifacts','voice-resources');
+      return require('./voice.cjs').transcribe({...value,resourcesPath,runtimeDirectory:app.isPackaged?undefined:path.join(appRoot,'artifacts','voice-runtime'),signal:controller.signal}).finally(()=>voiceJobs.delete(value.requestId));
     });
     ipcMain.handle('stelex:generation-status',(event,requestId)=>{validSender(event);return generationStatus.get(requestId)||{stage:'preparing'};});
     ipcMain.handle('stelex:generate-files',(event,value)=>{

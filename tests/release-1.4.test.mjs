@@ -44,7 +44,7 @@ test('customer and unlocked Admin join one service; newly minted code redeems ex
  const directory=await temporary(t),shared=path.join(directory,'Stelex GPT');await mkdir(path.join(shared,'server'),{recursive:true});
  const env={...process.env,STELEX_HOST:'127.0.0.1',STELEX_PORT:'0',STELEX_DEMO_MODE:'true'};
  const customer=await connectShared({root:shared,runtime:process.execPath,appRoot:root,env});
- t.after(async()=>{customer.release();try{const record=JSON.parse(await readFile(path.join(shared,'desktop-service-1.5.json')));process.kill(record.pid,'SIGTERM');}catch{}});
+ t.after(async()=>{customer.release();try{const record=JSON.parse(await readFile(path.join(shared,'desktop-service-1.6.json')));process.kill(record.pid,'SIGTERM');}catch{}});
  const user=await register(customer.url);assert.equal(user.data.balance,0);assert.equal((await call(customer.url,'/api/admin/stats',{admin:code})).status,401);
  await writeFile(path.join(shared,'server','admin-auth.json'),JSON.stringify({codeHash:hashAdminCode(code)}));
  const admin=await connectShared({root:shared,runtime:process.execPath,appRoot:root,env,admin:true});t.after(()=>admin.release());assert.equal(customer.serviceId,admin.serviceId);assert.equal(customer.url,admin.url);

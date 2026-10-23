@@ -29,7 +29,7 @@ exit /b 0
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$ReleaseVersion = '1.5.0'
+$ReleaseVersion = '1.6.0'
 $SetupName = "Stelex-GPT-Setup-$ReleaseVersion.exe"
 $ReleaseUrl = "https://github.com/stelexacc/New/releases/download/v$ReleaseVersion"
 $TaskDirectory = $null
@@ -99,6 +99,9 @@ try {
     if (-not (Test-Path -LiteralPath $PythonSetup -PathType Leaf)) { throw 'Python builder setup is missing.' }
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonSetup
     if ($LASTEXITCODE -ne 0) { throw 'Python EXE builder setup failed. Rerun Install.bat after fixing the error.' }
+    $VoiceSetup = Join-Path $InstallDirectory 'Setup-Voice.ps1'
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $VoiceSetup
+    if ($LASTEXITCODE -ne 0) { Write-Host 'Voice module needs attention. Chat still works; rerun Setup-Voice.ps1 after fixing its reported error.' -ForegroundColor Yellow }
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $ModelSetup
     if ($LASTEXITCODE -ne 0) { throw 'The model setup failed. Stelex was not started / Modelleinrichtung fehlgeschlagen. Stelex wurde nicht gestartet.' }
     $null = Start-Process -FilePath $Application -WorkingDirectory $InstallDirectory

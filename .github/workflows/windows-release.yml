@@ -7,6 +7,7 @@ name: Build and verify Stelex GPT Windows release
       - '.github/workflows/windows-release.yml'
       - 'scripts/**'
       - 'src/**'
+      - 'config/**'
       - 'public/**'
       - 'server/**'
       - 'desktop/**'
@@ -49,6 +50,8 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Ollama.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
           [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Python.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'scripts\Setup-Voice.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
           $raw = [IO.File]::ReadAllText((Join-Path $pwd 'scripts\Install.bat'))
           $marker = '# STELEX_BOOTSTRAP_POWERSHELL'
@@ -131,6 +134,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          node scripts/prepare-voice.mjs
           node scripts/package-windows.mjs
           node scripts/package-installer.mjs
           node scripts/package-admin.mjs
@@ -211,6 +215,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.build.outputs.version }}
       RELEASE_TAG: ${{ needs.build.outputs.tag }}
       STELEX_DEMO_MODE: 'true'
+      STELEX_VOICE_PERMISSION_SMOKE: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -257,6 +262,7 @@ jobs:
               if (-not (Test-Path -LiteralPath $resultFile -PathType Leaf)) { throw "The native application did not report a rendered page: $Label" }
               $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
               if (-not $result.ok -or $result.view -ne $View -or -not $result.demoMode) { throw "Native startup check failed: $Label" }
+              if (-not $result.audioPermissionAccepted -or -not $result.cameraAccessDenied) { throw 'Native microphone permission scope failed.' }
               Get-Content -LiteralPath $resultFile >> $env:GITHUB_STEP_SUMMARY
             } finally {
               Remove-Item Env:STELEX_SMOKE_TEST_FILE -ErrorAction SilentlyContinue
@@ -302,6 +308,19 @@ jobs:
           $python = Join-Path $env:APPDATA 'Stelex GPT\tools\python-builder\Scripts\python.exe'
           & $runtime scripts/windows-generation-check.cjs $appRoot (Join-Path $env:RUNNER_TEMP 'stelex-generated-native') $python
           if ($LASTEXITCODE -ne 0) { throw 'Real generated EXE verification failed.' }
+      - name: Verify offline Windows speech recognition with a public speech fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mainDirectory = Join-Path $env:LOCALAPPDATA 'Programs\Stelex GPT'
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $mainDirectory 'Setup-Voice.ps1')
+          if ($LASTEXITCODE -ne 0) { throw 'Local voice engine verification failed.' }
+          $sample = Join-Path $env:RUNNER_TEMP 'stelex-public-speech-fixture.wav'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.8.3/samples/jfk.wav' -OutFile $sample
+          $runtime = Join-Path $mainDirectory 'resources\runtime\node.exe'
+          & $runtime scripts/windows-voice-check.cjs (Join-Path $mainDirectory 'resources') $sample
+          if ($LASTEXITCODE -ne 0) { throw 'Actual Windows speech recognition failed.' }
+
 
 
 

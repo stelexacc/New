@@ -1,6 +1,6 @@
 {
   "name": "stelex-gpt",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "Stelex GPT desktop workspace with plans, percentage quotas, accounts and admin control",
@@ -15,7 +15,7 @@
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "test": "node --test tests/*.test.mjs",
     "desktop": "electron desktop/main.cjs",
-    "package:windows": "npm run build && node scripts/package-windows.mjs",
+    "package:windows": "npm run build && node scripts/prepare-voice.mjs && node scripts/package-windows.mjs",
     "package:installer": "npm run package:windows && node scripts/package-installer.mjs"
   },
   "dependencies": {
