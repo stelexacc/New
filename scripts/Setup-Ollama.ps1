@@ -1,5 +1,7 @@
 #Requires -Version 5.1
 param(
+    [switch]$SkipWinget,
+    [switch]$EngineOnly,
     [string[]]$SelectedModels = @(),
     [ValidateNotNullOrEmpty()][string]$Model = "qwen3.5-abliterated:9b",
     [ValidateNotNullOrEmpty()][string]$SourceModel = "huihui_ai/qwen3.5-abliterated:9b"
@@ -35,7 +37,11 @@ function Test-StelexUsageCount([object]$Value) {
     return (-not [double]::IsNaN($Count) -and -not [double]::IsInfinity($Count) -and $Count -ge 0 -and $Count -le 9007199254740991 -and [Math]::Floor($Count) -eq $Count)
 }
 
+$TranscriptStarted = $false
 try {
+    $LogDirectory = Join-Path $env:APPDATA 'Stelex GPT\logs'
+    New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+    try { Start-Transcript -LiteralPath (Join-Path $LogDirectory 'ollama-setup.log') -Append | Out-Null; $TranscriptStarted = $true } catch {}
     Write-Host "Stelex GPT | Installation / Setup" -ForegroundColor Red
     Write-Host "Model source / Modellquelle: $SourceModel"
     Write-Host "Stelex model name / Stelex-Modellname: $Model"
@@ -44,11 +50,13 @@ try {
 
     $OllamaPath = Get-OllamaExecutable
     if (-not $OllamaPath) {
-        $Winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+        $Winget = $null
+        if (-not $SkipWinget) { $Winget = Get-Command winget.exe -ErrorAction SilentlyContinue }
         if ($Winget) {
-            & $Winget.Source install --exact --id Ollama.Ollama --accept-package-agreements --accept-source-agreements
-            if ($LASTEXITCODE -ne 0) { throw "Ollama installation failed (exit $LASTEXITCODE). / Ollama-Installation fehlgeschlagen." }
-        } else {
+            try { & $Winget.Source install --exact --id Ollama.Ollama --accept-package-agreements --accept-source-agreements; if($LASTEXITCODE -ne 0){Write-Host ('winget failed (exit ' + $LASTEXITCODE + '). Trying the official Ollama installer.')} } catch { Write-Host 'winget failed. Trying the official Ollama installer.' }
+        }
+        $OllamaPath = Get-OllamaExecutable
+        if (-not $OllamaPath) {
             # Older Windows installations may not include App Installer. Accept
             # only a valid Ollama publisher signature before running its setup.
             $InstallerDirectory = Join-Path ([IO.Path]::GetTempPath()) ("Stelex-Ollama-" + [Guid]::NewGuid().ToString("N"))
@@ -56,12 +64,14 @@ try {
             try {
                 $InstallerPath = Join-Path $InstallerDirectory "OllamaSetup.exe"
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                Invoke-WebRequest -UseBasicParsing -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $InstallerPath -TimeoutSec 600
+                for ($Attempt=1; $Attempt -le 3; $Attempt++) {
+                    try { Invoke-WebRequest -UseBasicParsing -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $InstallerPath -TimeoutSec 600; break } catch { if($Attempt -eq 3){throw};Start-Sleep -Seconds $Attempt }
+                }
                 $Signature = Get-AuthenticodeSignature -LiteralPath $InstallerPath
                 if ($Signature.Status -ne "Valid" -or -not $Signature.SignerCertificate -or $Signature.SignerCertificate.Subject -notmatch "(?i)(?:^|,\s*)(?:CN|O)=Ollama(?:[ ,.]|$)") {
                     throw "The official Ollama installer could not be authenticated / Die Signatur der Ollama-Installation konnte nicht bestaetigt werden."
                 }
-                $Installer = Start-Process -FilePath $InstallerPath -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait -PassThru
+                $Installer = Start-Process -FilePath $InstallerPath -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="' + (Join-Path $LogDirectory 'ollama-installer.log') + '"') -Wait -PassThru
                 if ($Installer.ExitCode -ne 0) { throw "Ollama setup failed (exit $($Installer.ExitCode))." }
             } finally {
                 Remove-Item -LiteralPath $InstallerDirectory -Recurse -Force -ErrorAction SilentlyContinue
@@ -81,7 +91,7 @@ try {
         $OllamaReady = $true
     } catch { }
     if (-not $OllamaReady) {
-        $null = Start-Process -FilePath $OllamaPath -ArgumentList @("serve") -WindowStyle Hidden -PassThru
+        $Service = Start-Process -FilePath $OllamaPath -ArgumentList @("serve") -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $LogDirectory 'ollama-stdout.log') -RedirectStandardError (Join-Path $LogDirectory 'ollama-stderr.log')
         $Deadline = [DateTime]::UtcNow.AddSeconds(40)
         do {
             Start-Sleep -Milliseconds 500
@@ -90,8 +100,14 @@ try {
                 $OllamaReady = $true
             } catch { }
         } while (-not $OllamaReady -and [DateTime]::UtcNow -lt $Deadline)
-        if (-not $OllamaReady) { throw "Ollama did not become ready. / Ollama konnte nicht gestartet werden." }
+        if (-not $OllamaReady) {
+            $Service.Refresh()
+            if($Service.HasExited){throw ("Ollama exited before becoming ready (exit " + $Service.ExitCode + "). See " + $LogDirectory + ". Check Windows, graphics drivers, antivirus and available RAM.")}
+            throw ("Ollama did not become ready. Check port 11434 and logs in " + $LogDirectory)
+        }
     }
+
+    if ($EngineOnly) { Write-Host 'Official Ollama installation and local API verified; no models downloaded.'; exit 0 }
 
     $CatalogPath = Join-Path $PSScriptRoot 'models.json'
     if (-not (Test-Path -LiteralPath $CatalogPath)) { $CatalogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\models.json' }
@@ -145,4 +161,4 @@ try {
 } catch {
     Write-Host ('Setup failed / Einrichtung fehlgeschlagen: ' + $_.Exception.Message) -ForegroundColor Red
     exit 1
-}
+} finally { if($TranscriptStarted){try{Stop-Transcript | Out-Null}catch{}} }

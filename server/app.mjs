@@ -286,7 +286,7 @@ export async function createApp(options = {}) {
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
-        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.8.0', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
+        return json(200, { ok: true, serviceId:options.serviceId || null, version:'1.8.1', demoMode, models: models.map(publicModel), tokensPerCredit: TOKENS_PER_CREDIT, provider: { kind: providerKind, configured: !demoMode, ...providerObservation } });
       }
       if (method === 'POST' && ['/api/auth/register', '/api/auth/login'].includes(path)) {
         limit(request, 'auth-ip', 300);

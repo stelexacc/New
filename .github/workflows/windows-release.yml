@@ -35,9 +35,22 @@ jobs:
   windows-script-check:
     name: Check Windows entry points without installing models
     runs-on: windows-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: x64
+      - name: Verify an existing supported Python and build environment
+        shell: pwsh
+        run: |
+          $python = (Get-Command python.exe).Source
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-Python.ps1 -SkipWinget -PythonExecutable $python
+          if ($LASTEXITCODE -ne 0) { throw 'Supported Python compatibility check failed.' }
       - name: Check the standalone batch entry point
         shell: pwsh
         run: |
@@ -227,7 +240,7 @@ jobs:
     name: Install and launch the combined Windows application
     needs: build
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     # GitHub limits draft visibility to repository collaborators with push access.
     permissions:
       contents: write
@@ -325,7 +338,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-Python.ps1
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-Python.ps1 -SkipWinget -ForceStandalone
           if ($LASTEXITCODE -ne 0) { throw 'Python builder installation failed.' }
           $mainDirectory = Join-Path $env:LOCALAPPDATA 'Programs\Stelex GPT'
           $runtime = Join-Path $mainDirectory 'resources\runtime\node.exe'
@@ -345,9 +358,11 @@ jobs:
           $runtime = Join-Path $mainDirectory 'resources\runtime\node.exe'
           & $runtime scripts/windows-voice-check.cjs (Join-Path $mainDirectory 'resources') $sample
           if ($LASTEXITCODE -ne 0) { throw 'Actual Windows speech recognition failed.' }
-
-
-
+      - name: Verify official Ollama installation without winget or model downloads
+        shell: pwsh
+        run: |
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-Ollama.ps1 -SkipWinget -EngineOnly
+          if ($LASTEXITCODE -ne 0) { throw 'Official Ollama fallback setup failed.' }
 
   publish:
     name: Publish combined files only after native Windows checks pass
