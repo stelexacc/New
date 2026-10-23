@@ -258,6 +258,7 @@ jobs:
                 throw "Native startup timed out: $Label"
               }
               $process.Refresh()
+              if (Test-Path -LiteralPath $resultFile) { Get-Content -LiteralPath $resultFile }
               if ($process.ExitCode -ne 0) { throw "Native application exited unsuccessfully: $Label ($($process.ExitCode))" }
               if (-not (Test-Path -LiteralPath $resultFile -PathType Leaf)) { throw "The native application did not report a rendered page: $Label" }
               $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json

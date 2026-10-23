@@ -28,7 +28,7 @@ let preferenceWrite = Promise.resolve();
 let quitting = false;
 const smokeFile = process.env.CI === 'true' && process.env.STELEX_SMOKE_TEST_FILE && path.isAbsolute(process.env.STELEX_SMOKE_TEST_FILE)
   ? process.env.STELEX_SMOKE_TEST_FILE : null;
-if(smokeFile && process.env.STELEX_VOICE_PERMISSION_SMOKE==='true'){app.commandLine.appendSwitch('use-fake-device-for-media-stream');app.commandLine.appendSwitch('use-fake-ui-for-media-stream');}
+if(smokeFile && process.env.STELEX_VOICE_PERMISSION_SMOKE==='true'){app.commandLine.appendSwitch('use-fake-device-for-media-stream');}
 let smokeFinished = false;
 async function finishSmoke(result) {
   if (!smokeFile || smokeFinished) return;
