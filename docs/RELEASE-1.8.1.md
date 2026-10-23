@@ -7,3 +7,5 @@ Auch bei fehlgeschlagener Ollama-Installation durch winget wird der offizielle s
 ZIP vollständig entpacken, Stelex schließen und Install.bat ausführen. Gewünschte KI-Modelle und für EXE-Erstellung den Python-Builder auswählen. Vorhandene Ollama-Modelle werden wiederverwendet. Alle vier Modelloptionen, Ordnerimport, Anmelde-Checkbox und Deinstall.bat bleiben erhalten.
 
 Unterstützt: Windows 10/11 x64. Verfügbarkeit und Geschwindigkeit der Modelle hängen von Modellquelle, freiem Speicher und Hardware ab. Keine Garantie für beliebige Windows-, Python- oder Modellversionen.
+
+Der Ollama-Installer wartet nur auf seinen eigenen Installationsprozess, nicht auf die danach dauerhaft laufende Ollama-App. PowerShell-Fortschrittsanzeigen werden bei großen Downloads deaktiviert, um unnötige Verzögerungen zu vermeiden.

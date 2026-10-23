@@ -2,6 +2,7 @@
 # Install a local EXE builder; never run generated applications.
 param([switch]$SkipWinget,[switch]$ForceStandalone,[string]$PythonExecutable='',[switch]$LoadFunctionsOnly)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 function Test-StelexPython([string]$Executable) {
     if (-not $Executable -or -not (Test-Path -LiteralPath $Executable -PathType Leaf) -or $Executable -match '\\Microsoft\\WindowsApps\\') { return $false }
     try {

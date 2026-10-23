@@ -7,6 +7,7 @@ param(
     [ValidateNotNullOrEmpty()][string]$SourceModel = "huihui_ai/qwen3.5-abliterated:9b"
 )
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 Set-StrictMode -Version 2.0
 
 function Get-OllamaExecutable {
@@ -71,7 +72,10 @@ try {
                 if ($Signature.Status -ne "Valid" -or -not $Signature.SignerCertificate -or $Signature.SignerCertificate.Subject -notmatch "(?i)(?:^|,\s*)(?:CN|O)=Ollama(?:[ ,.]|$)") {
                     throw "The official Ollama installer could not be authenticated / Die Signatur der Ollama-Installation konnte nicht bestaetigt werden."
                 }
-                $Installer = Start-Process -FilePath $InstallerPath -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="' + (Join-Path $LogDirectory 'ollama-installer.log') + '"') -Wait -PassThru
+                Write-Host 'Installing signed official Ollama installer ...'
+                $Installer = Start-Process -FilePath $InstallerPath -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG="' + (Join-Path $LogDirectory 'ollama-installer.log') + '"') -PassThru
+                if (-not $Installer.WaitForExit(900000)) { throw ('Ollama installer is still running. Check ' + $LogDirectory) }
+                $Installer.Refresh()
                 if ($Installer.ExitCode -ne 0) { throw "Ollama setup failed (exit $($Installer.ExitCode))." }
             } finally {
                 Remove-Item -LiteralPath $InstallerDirectory -Recurse -Force -ErrorAction SilentlyContinue
