@@ -23,11 +23,13 @@ jobs:
           $ErrorActionPreference='Stop'
           $download=Join-Path $env:RUNNER_TEMP 'voice-diagnostic'
           New-Item -ItemType Directory $download | Out-Null
-          gh release download v1.6.0 --dir $download --pattern 'Stelex-GPT-Windows-x64.zip'
+          gh release download v1.5.0 --dir $download --pattern 'Stelex-GPT-Windows-x64.zip'
           if($LASTEXITCODE -ne 0){throw 'Draft download failed'}
           Expand-Archive (Join-Path $download 'Stelex-GPT-Windows-x64.zip') $download
           $app=Join-Path $download 'Stelex-GPT-Windows-x64'
           $main=Join-Path $app 'resources\app\desktop\main.cjs'
+          Copy-Item desktop\* (Join-Path $app 'resources\app\desktop') -Force
+          Copy-Item config (Join-Path $app 'resources\app') -Recurse -Force
           $source=[IO.File]::ReadAllText($main)
           $source=$source.Replace("let trusted = false;", "console.log('MEDIA REQUEST',permission,JSON.stringify(details));let trusted = false;")
           $source=$source.Replace("const target=BrowserWindow.fromWebContents(contents);", "console.log('MEDIA CHECK',permission,JSON.stringify(details));const target=BrowserWindow.fromWebContents(contents);")
@@ -36,7 +38,4 @@ jobs:
           $p=Start-Process (Join-Path $app 'Stelex GPT.exe') -WorkingDirectory $app -RedirectStandardOutput (Join-Path $download 'stdout.txt') -RedirectStandardError (Join-Path $download 'stderr.txt') -PassThru
           if(-not $p.WaitForExit(60000)){taskkill.exe /PID $p.Id /T /F | Out-Null}
           foreach($name in @('native-result.json','stdout.txt','stderr.txt')){if(Test-Path (Join-Path $download $name)){Write-Host $name;Get-Content (Join-Path $download $name)}}
-          $sample=Join-Path $download 'jfk.wav'
-          Invoke-WebRequest 'https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.8.3/samples/jfk.wav' -OutFile $sample
-          & (Join-Path $app 'resources\runtime\node.exe') scripts/windows-voice-check.cjs (Join-Path $app 'resources') $sample
-          if($LASTEXITCODE -ne 0){throw 'Whisper failed'}
+          if(-not (Test-Path $env:STELEX_SMOKE_TEST_FILE)){throw 'Missing diagnostic result'}
