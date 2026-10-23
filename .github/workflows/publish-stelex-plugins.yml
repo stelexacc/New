@@ -1,26 +1,28 @@
-name: Package Stelex in one folder without Admin
+name: Build verified client-only setup without Admin
 on:
   push:
     branches: [release/stelex-deepseek-free-plugins]
 permissions:
   contents: write
 concurrency:
-  group: package-stelex-one-folder
+  group: stelex-client-only
   cancel-in-progress: false
 jobs:
-  package:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Download previously verified installer and repair
+      - name: Install official distribution build tools
+        run: sudo apt-get update && sudo apt-get install -y nsis p7zip-full
+      - name: Download verified base application
+        run: gh release download v1.8.1 --pattern STELEX-GPT-1.8.1-Komplett.zip --dir base
+      - name: Build and audit client-only installer
+        run: python3 release/stelex-plugins/build-client.py base/STELEX-GPT-1.8.1-Komplett.zip output
+      - name: Publish only audited client artifacts
         run: |
-          gh release download v1.8.1-deepseek-fix --pattern 'STELEX-GPT-Setup-1.8.1-DeepSeek-Fix.exe*' --dir inputs
-          gh release download v1.8.1-deepseek-fix --pattern 'STELEX-GPT-DeepSeek-Reparatur.zip*' --dir inputs
-      - name: Package one directory and verify contents
-        run: python3 release/stelex-plugins/one-folder.py inputs output
-      - name: Publish folder package and checksum
-        run: gh release upload v1.8.1-deepseek-fix output/STELEX-GPT-1.8.1-Alles-in-einem-Ordner.zip output/STELEX-GPT-1.8.1-Alles-in-einem-Ordner.zip.sha256 --clobber
+          gh release upload v1.8.1-client-only output/STELEX-GPT-Setup-1.8.1-Client-Only.exe output/STELEX-GPT-Setup-1.8.1-Client-Only.exe.sha256 output/STELEX-GPT-1.8.1-Nur-Client-Ordner.zip output/STELEX-GPT-1.8.1-Nur-Client-Ordner.zip.sha256 output/STELEX-GPT-Client-Only-Dateiliste.json --clobber
+          gh release edit v1.8.1-client-only --draft=false --latest=false
