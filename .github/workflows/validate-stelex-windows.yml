@@ -21,5 +21,3 @@ jobs:
       - name: Test Windows installation and desktop app
         shell: powershell
         run: '& ./release/stelex-plugins/windows-client-smoke.ps1'
-      - name: Publish Windows-validated package
-        run: gh release edit v1.8.1-komplett-aktualisiert --draft=false --latest=false

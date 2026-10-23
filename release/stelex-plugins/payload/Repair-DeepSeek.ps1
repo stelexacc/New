@@ -10,7 +10,8 @@ if(-not(Test-Path -LiteralPath $Application -PathType Leaf)){throw 'Stelex GPT i
 & (Join-Path $PSScriptRoot 'Add-DeepSeek.ps1') -InstallDirectory $InstallDirectory
 $Model='stelex-deepseek-r1-abliterated:8b'
 foreach($Path in @((Join-Path $InstallDirectory 'models.json'),(Join-Path $InstallDirectory 'resources\app\config\models.json'))){
- $Catalog=@(Get-Content -LiteralPath $Path -Encoding UTF8 -Raw | ConvertFrom-Json)
+ $ParsedCatalog=Get-Content -LiteralPath $Path -Encoding UTF8 -Raw | ConvertFrom-Json
+ $Catalog=@($ParsedCatalog)
  if(@($Catalog|Where-Object {$_.id -eq $Model}).Count -ne 1){throw ('DeepSeek fehlt im Modellkatalog: '+$Path)}
 }
 $SelectionPath=Join-Path $InstallDirectory 'selected-components.json'

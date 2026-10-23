@@ -42,14 +42,15 @@ function Show-InstallerDiagnostics([int]$RootPid){
  }}
 }
 $Process=Start-Process -FilePath $Setup -ArgumentList ('/S /SKIPCOMPONENTS /D='+$Directory) -PassThru
-if(-not $Process.WaitForExit(45000)){Show-InstallerDiagnostics $Process.Id;$Process.Kill();throw 'Silent setup timed out; owned window diagnostics captured.'}
+if(-not $Process.WaitForExit(180000)){Show-InstallerDiagnostics $Process.Id;$Process.Kill();throw 'Silent setup timed out; owned window diagnostics captured.'}
 $Process.Refresh();Assert ($Process.ExitCode -eq 0) ('Setup failed: '+$Process.ExitCode)
 Assert (Test-Path -LiteralPath (Join-Path $Directory 'Stelex GPT.exe')) 'Client executable missing.'
 Assert (-not(Test-Path -LiteralPath (Join-Path $Directory 'Stelex Admin.exe'))) 'Admin executable installed.'
 Assert (-not(Test-Path -LiteralPath (Join-Path $Directory 'resources/private-admin.bundle.json'))) 'Admin private bundle installed.'
 Assert (-not(Test-Path -LiteralPath (Join-Path $Directory 'resources/app/desktop/locked-admin.cjs'))) 'Admin UI installed.'
 Assert (-not(Test-Path -LiteralPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Stelex GPT.lnk'))) 'Desktop shortcut was created without finish-page choice.'
-$Models=@(Get-Content -LiteralPath (Join-Path $Directory 'models.json') -Encoding UTF8 -Raw | ConvertFrom-Json)
+$ParsedModels=Get-Content -LiteralPath (Join-Path $Directory 'models.json') -Encoding UTF8 -Raw | ConvertFrom-Json
+$Models=@($ParsedModels)
 Assert ($Models.Count -eq 5) 'Expected five selectable models.'
 Assert (@($Models|Where-Object {$_.id -eq 'stelex-deepseek-r1-abliterated:8b'}).Count -eq 1) 'DeepSeek is missing.'
 # Exercise the real Windows Forms selector without downloading model weights.

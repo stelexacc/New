@@ -10,7 +10,8 @@ $SelectorPath = Join-Path $InstallDirectory 'Select-Components.ps1'
 $Selector = [IO.File]::ReadAllText($SelectorPath)
 $Updates = @()
 foreach ($Path in $Paths) {
-    $Catalog = @(Get-Content -LiteralPath $Path -Encoding UTF8 -Raw | ConvertFrom-Json)
+    $ParsedCatalog = Get-Content -LiteralPath $Path -Encoding UTF8 -Raw | ConvertFrom-Json
+    $Catalog = @($ParsedCatalog)
     if ($Catalog.Count -eq 0) { throw ('Empty model catalog: ' + $Path) }
     $Existing = @($Catalog | Where-Object { $_.id -eq $Model.id })
     if ($Existing.Count -gt 1) { throw 'Duplicate DeepSeek model registration.' }
