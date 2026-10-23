@@ -86,6 +86,8 @@ try {
             throw 'Please close Stelex GPT and Stelex Admin, then run Install.bat again / Stelex zuerst schliessen und Install.bat erneut starten.'
         }
     }
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $BootstrapDirectory 'Wait-StelexBackend.ps1') -InstallDirectory $InstallDirectory
+    if ($LASTEXITCODE -ne 0) { throw 'The old Stelex service is still active. Close all Stelex applications and retry.' }
     Write-Host 'Stelex-Setup wird ausgefuehrt / Installing Stelex ...'
     $Installer = Start-Process -FilePath $SetupPath -ArgumentList ('/S /D=' + $InstallDirectory) -Wait -PassThru
     if ($Installer.ExitCode -ne 0) { throw "The Stelex installer failed (exit $($Installer.ExitCode)) / Stelex-Installation fehlgeschlagen." }

@@ -1,0 +1,5 @@
+DeepSeek-Reparatur für bestehende Installationen: STELEX-GPT-DeepSeek-Reparatur.zip entpacken, alle Stelex-Apps schließen und DeepSeek-Reparieren.bat starten. DeepSeek wird gezielt registriert, heruntergeladen und mit einer echten Antwort geprüft. Chats und bisherige Modelle bleiben erhalten.
+
+Der neue STELEX-GPT-Setup-1.8.1-DeepSeek-Fix.exe führt auch beim direkten EXE-Start die Ergänzungen zwingend nach der ursprünglichen Basisinstallation aus. Die vorherige Setup-EXE führte diese Schritte nur beim Aufruf über Install.bat aus. Ein noch laufender alter Hintergrunddienst wird abgewartet. Der ausgelieferte Desktopkatalog enthält fünf Modelle; der Dienst ergänzt DeepSeek auch bei einer veralteten Vier-Modell-Startkonfiguration.
+
+23 automatisierte Tests bestanden. PowerShell-Dateianwendung und Syntax unter Linux geprüft. EXE-Wrapper unter GitHub Actions gebaut und eingebettete Dateien byteweise mit der Payload verglichen. Kein vollständiger Windows-End-to-End-Test. Free-Limits und die 11 Token-basierten Plugins bleiben enthalten. Die Modellgewichte werden erst bei der Installation heruntergeladen.

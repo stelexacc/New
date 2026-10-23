@@ -1,31 +1,43 @@
 [
   {
-    "path": "server/app.mjs",
-    "sha256": "acac83676c65140f98e2bc0967d8b7c7d19dc6c45d453448095384bf9b73d453"
-  },
-  {
-    "path": "server/plans.mjs",
-    "sha256": "70022c1e336b4592ffbd389a27be9c39160c113d49b359e09f8544bcad8cdb01"
-  },
-  {
-    "path": "server/free-limits.mjs",
-    "sha256": "b2c803cc0a21b64543c65904fedbec0d0362490c0d227299ab48fa29b0e0559d"
-  },
-  {
-    "path": "server/plugins.mjs",
-    "sha256": "89bc75e032e687920f4c789b73fe1be9d10852f7f144ff15646b8ae81f2d067c"
+    "path": "config/models.json",
+    "sha256": "f8708cb2445b9860057fe5cb882428b0df7f5228f73f90a62de369619a7fbc9b"
   },
   {
     "path": "dist/index.html",
     "sha256": "a28bad29a67bd35da6bb16afed273f9f24f89ac2ba294ff28e44b474ddd09d12"
   },
   {
+    "path": "dist/plugins.css",
+    "sha256": "1d1fef1db2f6645c031bf949560dd39d49910112b583561825b51fc30c44351e"
+  },
+  {
     "path": "dist/plugins.js",
     "sha256": "97fed541c6a100bec68024af09e296f4ae7b4f1980679c9e234a159e0077f1e6"
   },
   {
-    "path": "dist/plugins.css",
-    "sha256": "1d1fef1db2f6645c031bf949560dd39d49910112b583561825b51fc30c44351e"
+    "path": "server/app.mjs",
+    "sha256": "acac83676c65140f98e2bc0967d8b7c7d19dc6c45d453448095384bf9b73d453"
+  },
+  {
+    "path": "server/free-limits.mjs",
+    "sha256": "b2c803cc0a21b64543c65904fedbec0d0362490c0d227299ab48fa29b0e0559d"
+  },
+  {
+    "path": "server/index.mjs",
+    "sha256": "313f1f3e341a9591e482ed5ec80d4605e8facbe3b9592c39a1133574bbf1c04c"
+  },
+  {
+    "path": "server/plans.mjs",
+    "sha256": "70022c1e336b4592ffbd389a27be9c39160c113d49b359e09f8544bcad8cdb01"
+  },
+  {
+    "path": "server/plugins.mjs",
+    "sha256": "89bc75e032e687920f4c789b73fe1be9d10852f7f144ff15646b8ae81f2d067c"
+  },
+  {
+    "path": "tests/deepseek-catalog.test.mjs",
+    "sha256": "167b7a3610ea41a6ebb722665c594d35cc5d7f0c0e09f7c9c3d8eabbed675608"
   },
   {
     "path": "tests/update.test.mjs",
