@@ -16,8 +16,11 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Download staged installer
-        run: gh release download v1.8.1-komplett-aktualisiert --pattern 'Setup.exe*' --dir downloads
+        run: gh release download v1.8.1-python-exe-fix --pattern 'Setup.exe*' --dir downloads
       - name: Test Windows installation and desktop app
         shell: powershell
         run: '& ./release/stelex-plugins/windows-client-smoke.ps1'

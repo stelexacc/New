@@ -9,7 +9,7 @@ $Package=Get-Content -LiteralPath $PackagePath -Raw | ConvertFrom-Json
 if($Package.version -ne '1.8.1'){throw 'This update requires Stelex GPT 1.8.1.'}
 $ParsedManifest=Get-Content -LiteralPath (Join-Path $Root 'manifest.json') -Encoding UTF8 -Raw | ConvertFrom-Json
 $Manifest=@($ParsedManifest)
-$Required=@('server/app.mjs','server/plans.mjs','server/free-limits.mjs','server/plugins.mjs','dist/index.html','dist/plugins.js','dist/plugins.css','tests/update.test.mjs','config/models.json','server/index.mjs','tests/deepseek-catalog.test.mjs')
+$Required=@('config/models.json','config/output-contract.cjs','desktop/builder-setup.cjs','desktop/generated-files.cjs','desktop/generation-jobs.cjs','desktop/main.cjs','desktop/python-builder.cjs','dist/assets/index-DHj2KI5K.js','dist/index.html','dist/plugins.css','dist/plugins.js','server/app.mjs','server/free-limits.mjs','server/index.mjs','server/plans.mjs','server/plugins.mjs','tests/deepseek-catalog.test.mjs','tests/file-output.test.mjs','tests/update.test.mjs','tests/windows-real-artifacts.cjs')
 if($Manifest.Count -ne $Required.Count){throw 'Incomplete feature update manifest.'}
 $Seen=@{}
 foreach($Item in $Manifest){

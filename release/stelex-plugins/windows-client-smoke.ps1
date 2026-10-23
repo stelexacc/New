@@ -59,6 +59,9 @@ $SelectionOutput=& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Fi
 Assert ($LASTEXITCODE -eq 0) 'Windows Forms component selector failed.'
 $Selection=$SelectionOutput|ConvertFrom-Json
 Assert (@($Selection.models).Count -ge 1) 'Component selection did not produce a default model.'
+Write-Host '::notice::Windows test: creating real Python and EXE artifacts with the installed application modules.'
+& (Join-Path $Directory 'resources/runtime/node.exe') (Join-Path $Directory 'resources/app/tests/windows-real-artifacts.cjs')
+Assert ($LASTEXITCODE -eq 0) 'Real Python/EXE generation test failed.'
 # Start the actual installed Electron desktop app with the existing demo smoke protocol.
 $Smoke=Join-Path $env:RUNNER_TEMP 'stelex-desktop-smoke.json'
 $env:CI='true';$env:STELEX_DEMO_MODE='true';$env:STELEX_SMOKE_TEST_FILE=$Smoke

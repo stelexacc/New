@@ -1,3 +1,5 @@
+import outputRules from '../config/output-contract.cjs';
+import generatedOutput from '../desktop/generated-files.cjs';
 import {createFreeLimits} from './free-limits.mjs';
 import {createPlugins} from './plugins.mjs';
 import http from 'node:http';
@@ -542,6 +544,9 @@ export async function createApp(options = {}) {
           const body = await readJson(request,15*1024*1024);
           const uploaded=validateAttachments(body.attachments);
           const { message, conversationId, language = 'de' } = body;
+          const outputFormat=body.outputFormat??'auto';
+          if(!['auto','python','exe'].includes(outputFormat))throw new HttpError(400,'Ungültiges Ausgabeformat.','INVALID_OUTPUT_FORMAT');
+          const generationRequest=message+(outputFormat==='exe'?'\nAusgabeformat: Python-Quelldatei (.py) und Windows-EXE (.exe).':outputFormat==='python'?'\nAusgabeformat: vollständige Python-Datei (.py), keine EXE.':'');
           const model = models.find(item => item.id === (body.model || models[0].id));
           if(typeof message==='string' && message.length>16000) throw new HttpError(413,'Message exceeds 16,000 characters.','BODY_TOO_LARGE');
           if (typeof message !== 'string' || (!message.trim() && !uploaded.length) || !['de', 'en'].includes(language) || !model) throw new HttpError(400, 'A message of 1–16,000 characters and a valid model are required.', 'INVALID_MESSAGE');
@@ -555,7 +560,7 @@ export async function createApp(options = {}) {
           // Hash explicit request data; saved account/admin edits must not change
           // the identity of a completed retry. The effective prompt gets its own
           // immutable hash below, representing exactly what reached the provider.
-          const inputHash = hash(JSON.stringify({ message: message.trim(), model: model.id, conversationId: conversationId || null, language,...(uploaded.length?{attachments:uploaded.map(({name,mime,hash})=>({name,mime,hash}))}:{}),...(requestedPrompts ? {promptSettings:requestedPrompts} : {}) }));
+          const inputHash = hash(JSON.stringify({ ...(outputFormat!=='auto'?{outputFormat}:{}),message: message.trim(), model: model.id, conversationId: conversationId || null, language,...(uploaded.length?{attachments:uploaded.map(({name,mime,hash})=>({name,mime,hash}))}:{}),...(requestedPrompts ? {promptSettings:requestedPrompts} : {}) }));
           if (requestId) {
             const cached = db.prepare('SELECT inputHash,response FROM chat_requests WHERE userId=? AND requestId=?').get(user.id, requestId);
             if (cached) {
@@ -578,6 +583,8 @@ export async function createApp(options = {}) {
           const promptSettings=requestedPrompts?.override ? requestedPrompts : requestedPrompts ? {...prompts.readPreferences(user.id),override:false} : prompts.readConversation(user.id,conversation?.id);
           const systemMessage=prompts.buildMessages(promptSettings,language);
           if(/\.(?:py|exe|js|html|css|json|txt|cpp|ps1)\b|(?:erstelle|schreib|programmiere|entwickle|create|build).{0,80}(?:datei|file|programm|app|tool)/i.test(message))systemMessage.content+='\nWhen creating files, return complete code in fenced blocks using a language and filename, for example ```python filename="main.py". For project edits, preserve relative file paths from the supplied source snapshot in filename attributes. Return the complete updated contents of changed files. Never use absolute paths or parent traversal. For a requested Windows EXE provide complete Python source; the desktop builds it with PyInstaller. Never present text renamed to .exe. Prefer Python standard library when possible. Do not claim saving or building succeeded; the app reports actual results.';
+          const fileContract=outputRules.outputContract(generationRequest);
+          if(fileContract.wantsPython)systemMessage.content+='\nFILE OUTPUT CONTRACT: The user requests '+(fileContract.wantsExe?'a real Windows EXE built locally from Python':'a Python source file')+'. Return complete runnable Python 3 source in a fenced block: ```python filename="'+(fileContract.requestedPy||'main.py')+'". Supply source, not an EXE/dll/base64 blob. Never substitute C++, DLL injection code, pseudocode, or build instructions for the requested Python file. The desktop saves the .py and, for EXE requests, compiles it with PyInstaller. Never claim a file has already been saved or compiled. If this cannot be implemented in Python, explain the limitation instead of presenting another language as the requested file.';
           const promptHash=hash(systemMessage.content);
           const historyItems=attachments.historyMessages(history,uploaded);
           const allContextAttachments=[...uploaded,...historyItems.flatMap(item=>item.attachments)];
@@ -653,6 +660,10 @@ export async function createApp(options = {}) {
               if(charge>reservation)throw new HttpError(502,'Model usage exceeds the reserved bound.','INVALID_PROVIDER_RESPONSE');
               providerObservation = { reachable: true, checkedAt: iso() };
             }
+            if(!demoMode && fileContract.wantsPython){
+              const artifacts=generatedOutput.parseGeneratedFiles(content,generationRequest);
+              if(artifacts.formatError)throw new HttpError(502,artifacts.formatError,'FILE_FORMAT_MISMATCH');
+            }
             const time = iso();
             const assistant = { id: randomUUID(), role: 'assistant', content, createdAt: time, model: model.id,elapsedMs:Math.max(0,Date.now()-generationStartedAt) };
             const completed = transaction(() => {
@@ -679,7 +690,7 @@ export async function createApp(options = {}) {
               db.prepare('INSERT INTO usage(id,userId,model,inputTokens,outputTokens,credits,demo,createdAt,includedUnits,weightedUnits) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),user.id,model.id,inputTokens,outputTokens,creditsCharged,demoMode ? 1 : 0,time,includedUnits,charge);
               if (creditsCharged) recordLedger(user.id,'usage',-creditsCharged,next,model.id);
               freeLimits.commit(reservationId);
-              const result = {...accountState(user.id),conversationId:conversation.id,message:assistant,userMessage,creditsCharged,includedUnits,unitsUsed:charge,promptSettings:prompts.readConversation(user.id,conversation.id)};
+              const result = {...accountState(user.id),outputRequestText:generationRequest,conversationId:conversation.id,message:assistant,userMessage,creditsCharged,includedUnits,unitsUsed:charge,promptSettings:prompts.readConversation(user.id,conversation.id)};
               if (requestId) db.prepare('INSERT INTO chat_requests(userId,requestId,inputHash,conversationId,response,createdAt,promptHash) VALUES(?,?,?,?,?,?,?)').run(user.id, requestId, inputHash, conversation.id, JSON.stringify(result), time,promptHash);
               return result;
             });

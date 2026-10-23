@@ -4,20 +4,48 @@
     "sha256": "f8708cb2445b9860057fe5cb882428b0df7f5228f73f90a62de369619a7fbc9b"
   },
   {
+    "path": "config/output-contract.cjs",
+    "sha256": "624c2b6e561ce472698bd7ef04e50edf37396fff9306cae6883dcb72a3337da7"
+  },
+  {
+    "path": "desktop/builder-setup.cjs",
+    "sha256": "63ddfef869019116257683049ea26e3997b42d5a3fae03e310af2bb1b99787e8"
+  },
+  {
+    "path": "desktop/generated-files.cjs",
+    "sha256": "5a7e7fad4355dab25f6bf3ed0cb5ef0915f02f21bb20af4cbdd6a8f9c1903dda"
+  },
+  {
+    "path": "desktop/generation-jobs.cjs",
+    "sha256": "cbbe5e314ce366c51428f6183f8ec99cc2a3614b9adbcf09a9737dc50ca46840"
+  },
+  {
+    "path": "desktop/main.cjs",
+    "sha256": "0b48e585136fdd475283cd172749df7681d353f25c009483c413f4f04f7016fc"
+  },
+  {
+    "path": "desktop/python-builder.cjs",
+    "sha256": "7f58c5cd1d627e2201b861632adef6008b2c6dfc4525a62d42145ea4f8a23f2e"
+  },
+  {
+    "path": "dist/assets/index-DHj2KI5K.js",
+    "sha256": "09b204b31b4e93505ba56d2b6f9883ec1d78609ec98568330517b9d11c0d5ce9"
+  },
+  {
     "path": "dist/index.html",
     "sha256": "a28bad29a67bd35da6bb16afed273f9f24f89ac2ba294ff28e44b474ddd09d12"
   },
   {
     "path": "dist/plugins.css",
-    "sha256": "1d1fef1db2f6645c031bf949560dd39d49910112b583561825b51fc30c44351e"
+    "sha256": "ecd790fedac7084246b0a0d56816bb1c9b6a23d0e222261b9db3ca2d8f19e9ac"
   },
   {
     "path": "dist/plugins.js",
-    "sha256": "97fed541c6a100bec68024af09e296f4ae7b4f1980679c9e234a159e0077f1e6"
+    "sha256": "44865687d01721c99c0ff33afcec7ce0907045d7bfb9912f558a4f320d231374"
   },
   {
     "path": "server/app.mjs",
-    "sha256": "acac83676c65140f98e2bc0967d8b7c7d19dc6c45d453448095384bf9b73d453"
+    "sha256": "a5c0364aa46749a7aa7c20e6ae485ea5b3ba04350af2e700b3ccda6aaca2ae87"
   },
   {
     "path": "server/free-limits.mjs",
@@ -40,7 +68,15 @@
     "sha256": "167b7a3610ea41a6ebb722665c594d35cc5d7f0c0e09f7c9c3d8eabbed675608"
   },
   {
+    "path": "tests/file-output.test.mjs",
+    "sha256": "3938b2147d352b8c809f3fd4b7bea42dd97694ce094655020745d642a56002c8"
+  },
+  {
     "path": "tests/update.test.mjs",
     "sha256": "02dfc5edbc41ed10f5308526f6e3e349e4fc15918b06feb3cf074b4f64edbc1e"
+  },
+  {
+    "path": "tests/windows-real-artifacts.cjs",
+    "sha256": "b37a7c38db2b6aebe64e3ccf8d803b3689ad995a3ce418acade5232ac72697ec"
   }
 ]
