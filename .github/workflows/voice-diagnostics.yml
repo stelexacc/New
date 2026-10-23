@@ -32,6 +32,7 @@ jobs:
           Copy-Item server\* (Join-Path $app 'resources\app\server') -Force
           Copy-Item config (Join-Path $app 'resources\app') -Recurse -Force
           $source=[IO.File]::ReadAllText($main)
+          $source=$source.Replace("app.commandLine.appendSwitch('use-fake-ui-for-media-stream');", "")
           $source=$source.Replace("let trusted = false;", "console.log('MEDIA REQUEST',permission,JSON.stringify(details));let trusted = false;")
           $source=$source.Replace("const target=BrowserWindow.fromWebContents(contents);", "console.log('MEDIA CHECK',permission,JSON.stringify(details));const target=BrowserWindow.fromWebContents(contents);")
           [IO.File]::WriteAllText($main,$source)
