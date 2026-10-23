@@ -29,6 +29,7 @@ jobs:
           $app=Join-Path $download 'Stelex-GPT-Windows-x64'
           $main=Join-Path $app 'resources\app\desktop\main.cjs'
           Copy-Item desktop\* (Join-Path $app 'resources\app\desktop') -Force
+          Copy-Item server\* (Join-Path $app 'resources\app\server') -Force
           Copy-Item config (Join-Path $app 'resources\app') -Recurse -Force
           $source=[IO.File]::ReadAllText($main)
           $source=$source.Replace("let trusted = false;", "console.log('MEDIA REQUEST',permission,JSON.stringify(details));let trusted = false;")
