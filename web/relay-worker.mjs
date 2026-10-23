@@ -7,13 +7,15 @@ async function put(store,key,value){await store.put(key,JSON.stringify(value));}
 async function revoke(store,pair){if(!pair)return;await store.delete('pair/'+pair.id);let cursor;do{const page=await store.list({prefix:'job/'+pair.id+'/',limit:1000,...(cursor?{cursor}:{})});for(const object of page.objects)await store.delete(object.key);cursor=page.truncated?page.cursor:null;}while(cursor);}
 async function body(request){if(Number(request.headers.get('content-length')||0)>15000000)throw Error('Datei zu gross.');const text=await request.text();if(text.length>15000000)throw Error('Datei zu gross.');return JSON.parse(text);}
 export function permittedPath(path){return typeof path==='string'&&path.startsWith('/api/')&&!/\/api\/(?:admin|desktop)(?:\/|$)/.test(path)&&!path.includes('\\')&&!path.includes('..')&&!/[\x00-\x1f]/.test(path)&&path.length<2000;}
+function visitor(request){const user=request.headers.get('oai-authenticated-user-id');if(user)return user;const cookie=(request.headers.get('Cookie')||'').split(';').map(s=>s.trim()).find(s=>/^stelex_web_visitor=[a-f0-9]{64}$/.test(s));return cookie?'browser:'+cookie.slice('stelex_web_visitor='.length):null;}
 export function createRelayWorker(assets={}){return{async fetch(request,env){
  const url=new URL(request.url),path=url.pathname,store=env.BUCKET;
  const origin=request.headers.get('Origin');
  if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!path.startsWith('/bridge/agent/')&&((origin&&origin!==url.origin)||request.headers.get('Sec-Fetch-Site')==='cross-site'))return json({error:'Cross-origin writes are not allowed.'},403);
  try{
+  if(/^\/(?:admin|api\/admin)(?:[/.]|$)/i.test(decodeURIComponent(path)))return json({error:'Not found'},404);
   if(path.startsWith('/api/')){
-    const uid=request.headers.get('oai-authenticated-user-id');if(!uid)return json({error:'Anmeldung erforderlich.'},401);
+    const uid=visitor(request);if(!uid)return json({error:'Zuerst die Website öffnen und deinen PC verbinden.'},401);
     if(!store)return json({error:'Verbindung noch nicht eingerichtet.'},503);
     const link=await get(store,'owner/'+await sha(uid));const pair=link?await get(store,'pair/'+link.id):null;
     if(!pair||Date.now()-pair.seen>20000)return json({error:{message:'Dein PC ist offline. Stelex starten.',code:'PC_OFFLINE'}},503);
@@ -34,7 +36,7 @@ export function createRelayWorker(assets={}){return{async fetch(request,env){
    if(!store)return json({error:'Der Verbindungs-Speicher ist noch nicht bereit.'},503);
    const isAgent=path.startsWith('/bridge/agent/');let pair,owner;
    if(isAgent){const id=request.headers.get('X-Stelex-Bridge');if(!/^[a-f0-9]{64}$/.test(id||''))return json({error:'Nicht verbunden.'},401);pair=await get(store,'pair/'+id);if(!pair||await sha((request.headers.get('Authorization')||'').replace(/^Bearer /,''))!==pair.secretHash)return json({error:'Verbindung beendet oder ungueltig.'},401);}
-   else{const user=request.headers.get('oai-authenticated-user-id');if(!user)return json({error:'Mit ChatGPT anmelden.'},401);owner=await sha(user);const id=await get(store,'owner/'+owner);pair=id?await get(store,'pair/'+id.id):null;}
+   else{const user=visitor(request);if(!user){if(path==='/bridge/status'){const id=token();return json({paired:false,online:false,siteUrl:url.origin},200,{'Set-Cookie':'stelex_web_visitor='+id+'; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=2592000'});}return json({error:'Website neu laden und deinen PC verbinden.'},401);}owner=await sha(user);const id=await get(store,'owner/'+owner);pair=id?await get(store,'pair/'+id.id):null;}
    if(path==='/bridge/status')return json({paired:Boolean(pair),online:Boolean(pair&&Date.now()-pair.seen<20000),siteUrl:url.origin});
    if(path==='/bridge/pair'&&request.method==='POST'){
     if(!env.STELEX_SERVICE_ACCESS)return json({error:'Desktop-Dienstzugang noch nicht konfiguriert.'},503);
