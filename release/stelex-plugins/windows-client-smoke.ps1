@@ -73,7 +73,7 @@ Assert ($State.view -eq 'app') 'Expected client view, not Admin.'
 # Keep an unrelated user file and verify the uninstaller preserves it.
 $Sentinel=Join-Path $Directory 'user-file-to-preserve.txt';Set-Content -LiteralPath $Sentinel -Value 'user content'
 Write-Host '::notice::Windows test: desktop startup passed; testing uninstall.'
-$Uninstall=Start-Process -FilePath (Join-Path $Directory 'Uninstall Stelex GPT.exe') -ArgumentList '/S' -PassThru
+$Uninstall=Start-Process -FilePath (Join-Path $Directory 'Uninstall Stelex GPT.exe') -ArgumentList ('/S _?='+$Directory) -PassThru
 if(-not $Uninstall.WaitForExit(120000)){$Uninstall.Kill();throw 'Uninstall timed out.'}
 $Uninstall.Refresh();Assert ($Uninstall.ExitCode -eq 0) ('Uninstall failed: '+$Uninstall.ExitCode)
 $Deadline=[DateTime]::UtcNow.AddSeconds(15)
