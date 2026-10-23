@@ -15,7 +15,11 @@ unpacked=out/'verify-exe'
 subprocess.run(['7z','x',str(installer),'-o'+str(unpacked),'-y'],check=True,stdout=subprocess.DEVNULL)
 for p in inner.rglob('*'):
  if p.is_file():
-  embedded=unpacked/p.relative_to(inner)
+  relative=p.relative_to(inner)
+  candidates=[unpacked/relative,unpacked/'$PLUGINSDIR'/'Stelex'/relative,unpacked/'Stelex'/relative]
+  matches=[item for item in candidates if item.is_file()]
+  assert len(matches)==1,f'Unexpected embedded path: {relative}'
+  embedded=matches[0]
   assert embedded.is_file(),f'Missing embedded file: {p.relative_to(inner)}'
   assert hashlib.sha256(embedded.read_bytes()).digest()==hashlib.sha256(p.read_bytes()).digest(),f'Embedded checksum mismatch: {p}'
 repair=out/'STELEX-GPT-DeepSeek-Reparatur.zip'
