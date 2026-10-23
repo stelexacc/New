@@ -5,7 +5,7 @@
   },
   {
     "path": "config/output-contract.cjs",
-    "sha256": "624c2b6e561ce472698bd7ef04e50edf37396fff9306cae6883dcb72a3337da7"
+    "sha256": "16a014bfd24e4cf13e491c170d10fec3f3238e7f78233fb2b200325af2b1661a"
   },
   {
     "path": "desktop/builder-setup.cjs",
@@ -77,7 +77,7 @@
   },
   {
     "path": "tests/file-output.test.mjs",
-    "sha256": "3938b2147d352b8c809f3fd4b7bea42dd97694ce094655020745d642a56002c8"
+    "sha256": "9b7eef98c09060f5f9307b73ddde7fc6e9de7a528f10bb3e148c2011acef67a9"
   },
   {
     "path": "tests/update.test.mjs",
