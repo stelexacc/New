@@ -1,0 +1,5 @@
+Ein gemeinsamer Ordner mit Setup.exe, Install.bat, Einrichten.bat, Deinstall.bat, Modellübersicht und Anleitung. Das Client-Setup enthält kein Admin-Programm, kein privates Admin-Bundle und keinen alten kombinierten Installer. Das Admin-Tool ist weiterhin ein separater Download.
+
+Der fehlerhafte und blockierende Schritt zur Bereinigung alter Admin-Dateien wurde entfernt. Bereits vorhandene Admin-Installationen werden nicht verändert. Am Ende des Setups sind der Start der App und die Erstellung einer Desktop-Verknüpfung auswählbar. DeepSeek bleibt als fünfte Modelloption neben den vier bisherigen Modellen verfügbar; Free-Limits und Plugins bleiben enthalten.
+
+Vor Veröffentlichung: Bytevergleich der eingebetteten Dateien, Prüfung auf ausgeschlossene Admin-Dateien sowie Windows-Prüfung der Installation ohne Modelldownload, des echten Windows-Forms-Komponentendialogs, des installierten Electron-Clients im Demomodus und der Deinstallation unter Erhaltung einer hinzugefügten Benutzerdatei. Echte Modelldownloads und private Plugin-Konten werden dabei nicht getestet.

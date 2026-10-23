@@ -1,11 +1,11 @@
-name: Build verified client-only setup without Admin
+name: Build and Windows-test complete Stelex folder
 on:
   push:
     branches: [release/stelex-deepseek-free-plugins]
 permissions:
   contents: write
 concurrency:
-  group: stelex-client-only
+  group: stelex-complete-updated
   cancel-in-progress: false
 jobs:
   build:
@@ -20,9 +20,30 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nsis p7zip-full
       - name: Download verified base application
         run: gh release download v1.8.1 --pattern STELEX-GPT-1.8.1-Komplett.zip --dir base
-      - name: Build and audit client-only installer
+      - name: Build and audit updated installer and one-folder package
         run: python3 release/stelex-plugins/build-client.py base/STELEX-GPT-1.8.1-Komplett.zip output
-      - name: Publish only audited client artifacts
-        run: |
-          gh release upload v1.8.1-client-only output/STELEX-GPT-Setup-1.8.1-Client-Only.exe output/STELEX-GPT-Setup-1.8.1-Client-Only.exe.sha256 output/STELEX-GPT-1.8.1-Nur-Client-Ordner.zip output/STELEX-GPT-1.8.1-Nur-Client-Ordner.zip.sha256 output/STELEX-GPT-Client-Only-Dateiliste.json --clobber
-          gh release edit v1.8.1-client-only --draft=false --latest=false
+      - name: Stage package in draft for Windows validation
+        run: gh release upload v1.8.1-komplett-aktualisiert output/Setup.exe output/Setup.exe.sha256 output/STELEX-GPT-Komplett-Aktualisiert.zip output/STELEX-GPT-Komplett-Aktualisiert.zip.sha256 output/STELEX-GPT-Client-Only-Dateiliste.json --clobber
+  windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Download staged installer
+        run: gh release download v1.8.1-komplett-aktualisiert --pattern 'Setup.exe*' --dir downloads
+      - name: Test Windows installation, selector, desktop startup and uninstall
+        shell: powershell
+        run: '& ./release/stelex-plugins/windows-client-smoke.ps1'
+  publish:
+    needs: [build, windows]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Publish only after Windows validation succeeds
+        run: gh release edit v1.8.1-komplett-aktualisiert --draft=false --latest=false

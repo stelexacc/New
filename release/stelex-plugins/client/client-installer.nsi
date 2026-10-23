@@ -1,5 +1,7 @@
-Unicode true
+﻿Unicode true
 !include "MUI2.nsh"
+!include "FileFunc.nsh"
+Var SkipComponents
 Name "STELEX GPT - Client ohne Admin"
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\Stelex GPT"
@@ -13,25 +15,36 @@ ShowInstDetails show
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN "$INSTDIR\Stelex GPT.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "Stelex GPT jetzt starten"
+!define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\README.md"
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "Desktop-Verknüpfung erstellen"
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
+!insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "German"
+Function .onInit
+  StrCpy $SkipComponents "0"
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/SKIPCOMPONENTS" $1
+  ${IfNot} ${Errors}
+    StrCpy $SkipComponents "1"
+  ${EndIf}
+FunctionEnd
+Function CreateDesktopShortcut
+  SetShellVarContext current
+  CreateShortcut "$DESKTOP\Stelex GPT.lnk" "$INSTDIR\Stelex GPT.exe"
+FunctionEnd
 Section "Stelex GPT Client"
   SetShellVarContext current
   InitPluginsDir
   SetOutPath "$PLUGINSDIR\preflight"
   File "${INPUT_DIR}/Wait-StelexBackend.ps1"
-  File "${CLEANUP_DIR}/Remove-BundledAdmin.ps1"
-  File "${CLEANUP_DIR}/old-admin-hashes.json"
   ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\preflight\Wait-StelexBackend.ps1" -InstallDirectory "$INSTDIR"' $0
   ${If} $0 != 0
     MessageBox MB_OK|MB_ICONSTOP "Alle Stelex-Apps schliessen und erneut versuchen."
-    SetErrorLevel $0
-    Abort
-  ${EndIf}
-  ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\preflight\Remove-BundledAdmin.ps1" -InstallDirectory "$INSTDIR"' $0
-  ${If} $0 != 0
-    MessageBox MB_OK|MB_ICONSTOP "Die alte gebuendelte Admin-Kopie konnte nicht bereinigt werden."
     SetErrorLevel $0
     Abort
   ${EndIf}
@@ -48,12 +61,13 @@ Section "Stelex GPT Client"
   CreateDirectory "$SMPROGRAMS\Stelex GPT"
   CreateShortcut "$SMPROGRAMS\Stelex GPT\Stelex GPT.lnk" "$INSTDIR\Stelex GPT.exe"
   CreateShortcut "$SMPROGRAMS\Stelex GPT\Deinstallieren.lnk" "$INSTDIR\Uninstall Stelex GPT.exe"
-  CreateShortcut "$DESKTOP\Stelex GPT.lnk" "$INSTDIR\Stelex GPT.exe"
-  ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\Setup-Client.ps1"' $0
+  ${If} $SkipComponents != "1"
+  ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\Setup-Client.ps1" -NoLaunch' $0
   ${If} $0 != 0
     MessageBox MB_OK|MB_ICONSTOP "Programmdateien sind installiert, die Modelleinrichtung ist noch nicht abgeschlossen. Install.bat im Programmordner erneut starten und die dortige Fehlermeldung beachten."
     SetErrorLevel $0
     Abort
+  ${EndIf}
   ${EndIf}
   SetErrorLevel 0
 SectionEnd

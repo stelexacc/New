@@ -7,12 +7,10 @@ with zipfile.ZipFile(base) as z:original.write_bytes(z.read('Stelex-GPT-Setup-1.
 client=out/'client-files'
 subprocess.run(['7z','x',str(original),'-o'+str(client),'-y','-x!Uninstall Stelex GPT.exe','-x!$PLUGINSDIR/*'],check=True,stdout=subprocess.DEVNULL)
 removed=['Stelex Admin.exe','resources/private-admin.bundle.json','resources/app/desktop/admin-bundle.cjs']+[p.relative_to(client).as_posix() for p in (client/'resources/app/desktop').glob('locked-admin*')]
-cleanup=out/'cleanup';cleanup.mkdir(exist_ok=True);hashes=[]
+hashes=[]
 for name in removed:
  p=client/name
  if p.is_file():hashes.append({'path':name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()});p.unlink()
-(cleanup/'old-admin-hashes.json').write_text(json.dumps(hashes,indent=2)+'\n')
-shutil.copyfile(root/'client/Remove-BundledAdmin.ps1',cleanup/'Remove-BundledAdmin.ps1')
 for name in ['$PLUGINSDIR','resources/app/admin']:
  p=client/name
  if p.exists():shutil.rmtree(p)
@@ -33,7 +31,7 @@ package=client/'resources/app/package.json';data=json.loads(package.read_text())
 for name in ['Setup-Client.ps1','Install.bat']:shutil.copyfile(root/'client'/name,client/name)
 shutil.copyfile(root/'payload/Wait-StelexBackend.ps1',client/'Wait-StelexBackend.ps1')
 (client/'Install.bat.sha256').write_text(hashlib.sha256((client/'Install.bat').read_bytes()).hexdigest()+'  Install.bat\n')
-readme='''STELEX GPT – Client ohne Admin\n\nDas Setup installiert ausschliesslich den Chat-Client mit DeepSeek-Auswahl, Free-Limits und Plugins. Eine Stelex-Admin-EXE, das private Admin-Bundle und die Admin-Oberflaeche sind nicht enthalten. Der alte kombinierte Installer ist weder eingebettet noch wird er heruntergeladen.\n\nSetup starten, Zielordner und gewuenschte Modelle auswaehlen. DeepSeek ist die fuenfte Option; die Modellgewichte werden bei Auswahl ueber Ollama heruntergeladen (ca. 5 GB).\n\nBestehende Chats und Modelle bleiben erhalten. Beim Upgrade wird ausschliesslich die bekannte frueher gebuendelte Admin-Kopie anhand ihrer Pruefsummen entfernt. Separat installierte oder veraenderte Admin-Dateien und persoenliche Daten werden nicht geloescht.\n\nWeitere Modelle koennen spaeter ueber Install.bat im installierten Programmordner eingerichtet werden; dieses Skript laedt keinen alten Installer.\n\nPruefung: Payload, Modellkataloge und Abwesenheit von Admin-Dateien werden vor Veroeffentlichung automatisiert geprueft. Der Windows-Installer wird unter Linux gebaut und extrahiert geprueft; kein vollstaendiger Windows-End-to-End-Test.\n'''
+readme='''STELEX GPT – Client ohne Admin\n\nDas Setup installiert ausschliesslich den Chat-Client mit DeepSeek-Auswahl, Free-Limits und Plugins. Eine Stelex-Admin-EXE, das private Admin-Bundle und die Admin-Oberflaeche sind nicht enthalten. Der alte kombinierte Installer ist weder eingebettet noch wird er heruntergeladen.\n\nSetup.exe starten, Zielordner und gewuenschte Modelle auswaehlen. Am Ende kann die Desktop-Verknuepfung angehakt werden. Install.bat startet dasselbe Setup; Einrichten.bat oeffnet spaeter erneut die Modellauswahl. DeepSeek ist die fuenfte Option; die Modellgewichte werden bei Auswahl ueber Ollama heruntergeladen (ca. 5 GB).\n\nBestehende Chats und Modelle bleiben erhalten. Das Setup veraendert keine bereits vorhandenen Admin-Installationen. Der fehlerhafte Bereinigungsschritt ist entfallen. Am Ende kann eine Desktop-Verknuepfung ausgewaehlt werden.\n\nWeitere Modelle koennen spaeter ueber Install.bat im installierten Programmordner eingerichtet werden; dieses Skript laedt keinen alten Installer.\n\nPruefung: Payload, Modellkataloge und Abwesenheit von Admin-Dateien werden vor Veroeffentlichung automatisiert geprueft. Der Windows-Installer wird gebaut und extrahiert geprueft. Vor Veroeffentlichung prueft ein Windows-Lauf Installation ohne Modelldownload, Modell-Auswahldialog, Demo-App-Start und Deinstallation; grosse Modelldownloads werden dabei nicht ausgefuehrt.\n'''
 (client/'README.md').write_text(readme,encoding='utf-8-sig');(client/'START-HERE.txt').write_text(readme)
 for p in client.rglob('*'):
  if p.is_file():
@@ -48,8 +46,8 @@ for p in sorted(client.rglob('*')):
  if p.is_file():lines.append('Delete "$INSTDIR\\'+p.relative_to(client).as_posix().replace('/','\\')+'"')
 for p in sorted((p for p in client.rglob('*') if p.is_dir()),key=lambda p:len(p.parts),reverse=True):lines.append('RMDir "$INSTDIR\\'+p.relative_to(client).as_posix().replace('/','\\')+'"')
 delete.write_text('\n'.join(lines)+'\n')
-installer=out/'STELEX-GPT-Setup-1.8.1-Client-Only.exe'
-subprocess.run(['makensis',f'-DINPUT_DIR={client}',f'-DCLEANUP_DIR={cleanup}',f'-DDELETE_MANIFEST={delete}',f'-DOUTPUT_FILE={installer}',str(root/'client/client-installer.nsi')],check=True)
+installer=out/'Setup.exe'
+subprocess.run(['makensis',f'-DINPUT_DIR={client}',f'-DDELETE_MANIFEST={delete}',f'-DOUTPUT_FILE={installer}',str(root/'client/client-installer.nsi')],check=True)
 check=out/'verify-client-installer';subprocess.run(['7z','x',str(installer),'-o'+str(check),'-y','-x!Uninstall Stelex GPT.exe'],check=True,stdout=subprocess.DEVNULL)
 for p in client.rglob('*'):
  if p.is_file():
@@ -63,10 +61,16 @@ for p in check.rglob('*'):
 # Publish a manifest so the client-only content can be reviewed independently.
 audit={p.relative_to(client).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(client.rglob('*')) if p.is_file()}
 (out/'STELEX-GPT-Client-Only-Dateiliste.json').write_text(json.dumps(audit,indent=2)+'\n')
-archive=out/'STELEX-GPT-1.8.1-Nur-Client-Ordner.zip'
+archive=out/'STELEX-GPT-Komplett-Aktualisiert.zip'
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=1) as z:
  z.write(installer,'STELEX-GPT/'+installer.name)
  z.writestr('STELEX-GPT/START-HIER.txt',readme)
+ z.write(client/'Deinstall.bat','STELEX-GPT/Deinstall.bat')
+ z.write(root/'client/Folder-Install.bat','STELEX-GPT/Install.bat')
+ z.write(root/'client/Einrichten.bat','STELEX-GPT/Einrichten.bat')
+ z.write(root/'client/Einrichten.ps1','STELEX-GPT/Einrichten.ps1')
+ z.writestr('STELEX-GPT/Setup.exe.sha256',hashlib.sha256(installer.read_bytes()).hexdigest()+'  Setup.exe\n')
+ z.writestr('STELEX-GPT/Modelle.json',json.dumps(models,ensure_ascii=False,indent=2))
 with zipfile.ZipFile(archive) as z:assert z.testzip() is None
 for p in [installer,archive]:p.with_suffix(p.suffix+'.sha256').write_text(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n')
 print('CLIENT-ONLY VERIFIED:',len(audit),'payload files; no Admin EXE, private bundle, Admin UI or nested legacy setup.')
