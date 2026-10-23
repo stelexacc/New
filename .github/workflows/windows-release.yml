@@ -29,7 +29,7 @@ permissions:
 
 concurrency:
   group: stelex-windows-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   windows-script-check:
@@ -101,16 +101,28 @@ jobs:
           test -s "docs/RELEASE-$release_version.md"
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
           echo "tag=v$release_version" >> "$GITHUB_OUTPUT"
-      - name: Install build and browser dependencies
+      - name: Install build dependencies with bounded network waits
+        timeout-minutes: 6
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y nsis p7zip-full
-          npm ci --no-audit --no-fund
-          python -m pip install --disable-pip-version-check playwright
-          python -m playwright install --with-deps chromium
-          python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print('STELEX_CHROMIUM_PATH='+p.chromium.executable_path); p.stop()" >> "$GITHUB_ENV"
+          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y nsis p7zip-full
+          npm ci --no-audit --no-fund --fetch-timeout=60000 --fetch-retries=2
+          python -m pip install --disable-pip-version-check --timeout 30 --retries 2 playwright
+      - name: Select the runner browser or install the fallback
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v google-chrome >/dev/null; then
+            echo "STELEX_CHROMIUM_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null; then
+            echo "STELEX_CHROMIUM_PATH=$(command -v chromium)" >> "$GITHUB_ENV"
+          else
+            python -m playwright install --with-deps chromium
+            python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print('STELEX_CHROMIUM_PATH='+p.chromium.executable_path); p.stop()" >> "$GITHUB_ENV"
+          fi
       - name: Run backend, filesystem, and scheduling tests
         run: npm test
       - name: Build the production interface
