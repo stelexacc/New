@@ -2,6 +2,11 @@ name: Build and Windows-test complete Stelex folder
 on:
   push:
     branches: [release/stelex-deepseek-free-plugins]
+    paths:
+      - 'release/stelex-plugins/build-client.py'
+      - 'release/stelex-plugins/client/**'
+      - 'release/stelex-plugins/payload/**'
+      - '.github/workflows/publish-stelex-plugins.yml' 
 permissions:
   contents: write
 concurrency:

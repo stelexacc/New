@@ -1,0 +1,25 @@
+name: Validate staged Stelex installer on Windows
+on:
+  push:
+    branches: [release/stelex-deepseek-free-plugins]
+    paths:
+      - 'release/stelex-plugins/windows-client-smoke.ps1'
+      - '.github/workflows/validate-stelex-windows.yml'
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Download staged installer
+        run: gh release download v1.8.1-komplett-aktualisiert --pattern 'Setup.exe*' --dir downloads
+      - name: Test Windows installation and desktop app
+        shell: powershell
+        run: '& ./release/stelex-plugins/windows-client-smoke.ps1'
+      - name: Publish Windows-validated package
+        run: gh release edit v1.8.1-komplett-aktualisiert --draft=false --latest=false

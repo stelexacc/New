@@ -1,10 +1,16 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
+trap {
+ Write-Host ('::error::'+($_.Exception.Message -replace '\r?\n',' '))
+ Write-Host $_.ScriptStackTrace
+ exit 1
+}
 function Assert($Condition,[string]$Message){if(-not $Condition){throw $Message}}
 $Setup=(Resolve-Path 'downloads/Setup.exe').Path
 $Expected=(Get-Content -LiteralPath 'downloads/Setup.exe.sha256' -Raw).Split(' ')[0].Trim()
 Assert ((Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash.ToLowerInvariant() -eq $Expected) 'Setup checksum mismatch.'
 $Directory=Join-Path $env:RUNNER_TEMP 'Stelex Client Smoke'
+Write-Host '::notice::Windows test: starting silent setup.'
 $Process=Start-Process -FilePath $Setup -ArgumentList ('/S /SKIPCOMPONENTS /D='+$Directory) -PassThru
 if(-not $Process.WaitForExit(120000)){$Process.Kill();throw 'Silent setup timed out.'}
 $Process.Refresh();Assert ($Process.ExitCode -eq 0) ('Setup failed: '+$Process.ExitCode)
@@ -17,6 +23,7 @@ $Models=@(Get-Content -LiteralPath (Join-Path $Directory 'models.json') -Encodin
 Assert ($Models.Count -eq 5) 'Expected five selectable models.'
 Assert (@($Models|Where-Object {$_.id -eq 'stelex-deepseek-r1-abliterated:8b'}).Count -eq 1) 'DeepSeek is missing.'
 # Exercise the real Windows Forms selector without downloading model weights.
+Write-Host '::notice::Windows test: installed files verified; testing native component selector.'
 $SelectionOutput=& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Directory 'Select-Components.ps1') -CheckOnly
 Assert ($LASTEXITCODE -eq 0) 'Windows Forms component selector failed.'
 $Selection=$SelectionOutput|ConvertFrom-Json
@@ -24,6 +31,7 @@ Assert (@($Selection.models).Count -ge 1) 'Component selection did not produce a
 # Start the actual installed Electron desktop app with the existing demo smoke protocol.
 $Smoke=Join-Path $env:RUNNER_TEMP 'stelex-desktop-smoke.json'
 $env:CI='true';$env:STELEX_DEMO_MODE='true';$env:STELEX_SMOKE_TEST_FILE=$Smoke
+Write-Host '::notice::Windows test: native component selector passed; starting installed desktop app.'
 $App=Start-Process -FilePath (Join-Path $Directory 'Stelex GPT.exe') -ArgumentList '--disable-gpu','--no-sandbox' -PassThru
 if(-not $App.WaitForExit(90000)){$App.Kill();throw 'Desktop startup smoke timed out.'}
 $App.Refresh();Assert ($App.ExitCode -eq 0) ('Desktop failed: '+$App.ExitCode)
@@ -33,6 +41,7 @@ Assert ($State.ok -eq $true) ('Desktop smoke failed: '+($State|ConvertTo-Json -C
 Assert ($State.view -eq 'app') 'Expected client view, not Admin.'
 # Keep an unrelated user file and verify the uninstaller preserves it.
 $Sentinel=Join-Path $Directory 'user-file-to-preserve.txt';Set-Content -LiteralPath $Sentinel -Value 'user content'
+Write-Host '::notice::Windows test: desktop startup passed; testing uninstall.'
 $Uninstall=Start-Process -FilePath (Join-Path $Directory 'Uninstall Stelex GPT.exe') -ArgumentList '/S' -PassThru
 if(-not $Uninstall.WaitForExit(120000)){$Uninstall.Kill();throw 'Uninstall timed out.'}
 $Uninstall.Refresh();Assert ($Uninstall.ExitCode -eq 0) ('Uninstall failed: '+$Uninstall.ExitCode)
