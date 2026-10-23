@@ -43,6 +43,13 @@ jobs:
         run: |
           cmd.exe /d /c scripts\Install.bat --help
           if ($LASTEXITCODE -ne 0) { throw 'Install.bat --help failed.' }
+      - name: Verify compact defaults with Windows PowerShell 5.1
+        shell: pwsh
+        run: |
+          $json = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Select-Components.ps1 -CheckOnly
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell component selection failed.' }
+          $components = $json | ConvertFrom-Json
+          if (@($components.models).Count -ne 1 -or $components.models[0] -ne 'stelex-qwen35-hauhau:9b' -or $components.python -ne $false) { throw 'Compact defaults are invalid.' }
       - name: Parse PowerShell setup and embedded bootstrap
         shell: pwsh
         run: |

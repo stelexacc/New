@@ -95,7 +95,7 @@ try {
 
     $CatalogPath = Join-Path $PSScriptRoot 'models.json'
     if (-not (Test-Path -LiteralPath $CatalogPath)) { $CatalogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\models.json' }
-    $Catalog = @(Get-Content -LiteralPath $CatalogPath -Encoding UTF8 -Raw | ConvertFrom-Json)
+    $Catalog = Get-Content -LiteralPath $CatalogPath -Encoding UTF8 -Raw | ConvertFrom-Json
     if ($SelectedModels.Count -eq 0) {
         $SelectionFile = Join-Path $PSScriptRoot 'selected-components.json'
         if (Test-Path -LiteralPath $SelectionFile) {

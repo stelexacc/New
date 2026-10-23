@@ -93,13 +93,17 @@ Function ComponentsPage
   ${NSD_Check} $CheckVoice
   ${NSD_CreateLabel} 0 161u 100% 30u ""
   Pop $ComponentTotal
-  ${NSD_OnClick} $CheckOriginal UpdateComponentTotal
-  ${NSD_OnClick} $CheckQwen UpdateComponentTotal
-  ${NSD_OnClick} $CheckDolphin UpdateComponentTotal
-  ${NSD_OnClick} $CheckGemma UpdateComponentTotal
-  ${NSD_OnClick} $CheckPython UpdateComponentTotal
+  ${NSD_OnClick} $CheckOriginal ComponentClicked
+  ${NSD_OnClick} $CheckQwen ComponentClicked
+  ${NSD_OnClick} $CheckDolphin ComponentClicked
+  ${NSD_OnClick} $CheckGemma ComponentClicked
+  ${NSD_OnClick} $CheckPython ComponentClicked
   Call UpdateComponentTotal
   nsDialogs::Show
+FunctionEnd
+Function ComponentClicked
+  Pop $0
+  Call UpdateComponentTotal
 FunctionEnd
 Function UpdateComponentTotal
   StrCpy $2 750

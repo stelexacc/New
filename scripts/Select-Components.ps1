@@ -4,7 +4,9 @@ $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
-$Catalog=@(Get-Content (Join-Path $PSScriptRoot 'models.json') -Encoding UTF8 -Raw | ConvertFrom-Json)
+$CatalogPath=Join-Path $PSScriptRoot 'models.json'
+if(-not (Test-Path -LiteralPath $CatalogPath)){$CatalogPath=Join-Path (Split-Path -Parent $PSScriptRoot) 'config\models.json'}
+$Catalog=Get-Content -LiteralPath $CatalogPath -Encoding UTF8 -Raw | ConvertFrom-Json
 $Form=New-Object Windows.Forms.Form
 $Form.Text='STELEX | Installation nach deinem Bedarf'
 $Form.Size=New-Object Drawing.Size(690,620)

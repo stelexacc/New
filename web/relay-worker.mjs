@@ -9,6 +9,8 @@ async function body(request){if(Number(request.headers.get('content-length')||0)
 export function permittedPath(path){return typeof path==='string'&&path.startsWith('/api/')&&!/\/api\/(?:admin|desktop)(?:\/|$)/.test(path)&&!path.includes('\\')&&!path.includes('..')&&!/[\x00-\x1f]/.test(path)&&path.length<2000;}
 export function createRelayWorker(assets={}){return{async fetch(request,env){
  const url=new URL(request.url),path=url.pathname,store=env.BUCKET;
+ const origin=request.headers.get('Origin');
+ if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!path.startsWith('/bridge/agent/')&&((origin&&origin!==url.origin)||request.headers.get('Sec-Fetch-Site')==='cross-site'))return json({error:'Cross-origin writes are not allowed.'},403);
  try{
   if(path.startsWith('/api/')){
     const uid=request.headers.get('oai-authenticated-user-id');if(!uid)return json({error:'Anmeldung erforderlich.'},401);
