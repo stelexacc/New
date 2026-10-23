@@ -5,6 +5,8 @@ on:
     paths:
       - 'release/stelex-plugins/build-client.py'
       - 'release/stelex-plugins/client/**'
+      - 'release/stelex-plugins/admin/**'
+      - 'release/stelex-plugins/build-admin.py'
       - 'release/stelex-plugins/payload/**'
       - '.github/workflows/publish-stelex-plugins.yml' 
 permissions:
@@ -27,8 +29,12 @@ jobs:
         run: gh release download v1.8.1 --pattern STELEX-GPT-1.8.1-Komplett.zip --dir base
       - name: Build and audit updated installer and one-folder package
         run: python3 release/stelex-plugins/build-client.py base/STELEX-GPT-1.8.1-Komplett.zip output
+      - name: Test application APIs and output contracts
+        run: node --test output/client-files/resources/app/tests/admin-updates.test.mjs output/client-files/resources/app/tests/file-output.test.mjs output/client-files/resources/app/tests/update.test.mjs output/client-files/resources/app/tests/deepseek-catalog.test.mjs
+      - name: Build separate locked Admin package
+        run: python3 release/stelex-plugins/build-admin.py base/STELEX-GPT-1.8.1-Komplett.zip output
       - name: Stage package in draft for Windows validation
-        run: gh release upload v1.8.1-python-exe-fix output/Setup.exe output/Setup.exe.sha256 output/STELEX-GPT-Komplett-Aktualisiert.zip output/STELEX-GPT-Komplett-Aktualisiert.zip.sha256 output/STELEX-GPT-Client-Only-Dateiliste.json --clobber
+        run: gh release upload v1.8.2-updates-admin output/Setup.exe output/Setup.exe.sha256 output/STELEX-GPT-Komplett-Aktualisiert.zip output/STELEX-GPT-Komplett-Aktualisiert.zip.sha256 output/STELEX-GPT-Client-Only-Dateiliste.json output/STELEX-Admin-Aktualisiert.zip output/STELEX-Admin-Aktualisiert.zip.sha256 --clobber
   windows:
     needs: build
     runs-on: windows-latest
@@ -42,10 +48,15 @@ jobs:
         with:
           python-version: '3.13'
       - name: Download staged installer
-        run: gh release download v1.8.1-python-exe-fix --pattern 'Setup.exe*' --dir downloads
+        run: gh release download v1.8.2-updates-admin --pattern 'Setup.exe*' --dir downloads
       - name: Test Windows installation, selector, desktop startup and uninstall
         shell: powershell
         run: '& ./release/stelex-plugins/windows-client-smoke.ps1'
+      - name: Download separate Admin package
+        run: gh release download v1.8.2-updates-admin --pattern 'STELEX-Admin-Aktualisiert.zip*' --dir downloads
+      - name: Test separate Admin lock and rejection of incorrect code
+        shell: powershell
+        run: '& ./release/stelex-plugins/admin/windows-admin-smoke.ps1'
   publish:
     needs: [build, windows]
     runs-on: ubuntu-latest
@@ -54,4 +65,4 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Publish only after Windows validation succeeds
-        run: gh release edit v1.8.1-python-exe-fix --draft=false --latest=false
+        run: gh release edit v1.8.2-updates-admin --draft=false --latest=true

@@ -4,7 +4,7 @@ async function api(path,options={}){const r=await fetch('/api/'+path,{credential
 const send=(path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
 let toolbar,quota,dialog,account=null,lastAuth=false,refreshing=false,previousFocus,requestedOutput='auto';
 const time=value=>new Date(value).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'});
-async function refresh(){if(refreshing)return;refreshing=true;try{account=await api('me');if(!toolbar){toolbar=el('aside',{class:'stx-tools','aria-label':'Plugins und Free-Kontingent'});quota=el('span',{class:'stx-quota',role:'status'});const format=el('select',{'aria-label':'Ausgabeformat',class:'stx-output-format',title:'Die Windows-EXE wird aus Python gebaut; fremder Quelltext wird nicht umbenannt.'});for(const [value,label] of [['auto','Automatisch'],['python','Python-Datei (.py)'],['exe','Python + Windows-EXE']]){const option=el('option',{value,text:label});if(value==='exe'&&!window.stelexDesktop?.generateFiles)option.disabled=true;format.append(option);}format.value=requestedOutput;format.addEventListener('change',()=>{requestedOutput=format.value;});toolbar.append(quota,el('label',{class:'stx-output-label'},el('small',{text:'Ausgabe'}),format),el('button',{class:'stx-primary',text:'＋ Plugins',onclick:openPlugins}));document.body.append(toolbar);}const q=account.quota?.messages;quota.replaceChildren();if(q){quota.append(el('strong',{text:`Free: ${q.short.remaining}/${q.short.limit} · 5 Std.`}),el('small',{text:`Woche: ${q.week.remaining}/${q.week.limit} · Erneuerung ${time(q.short.resetAt)}`}));quota.title=`5-Stunden-Fenster: ${time(q.short.resetAt)}. Wochenfenster: ${time(q.week.resetAt)}. Gezählt werden erfolgreiche Antworten; laufende Antworten sind reserviert.`;}else quota.append(el('strong',{text:account.subscription?.planName||'Workspace'}));}catch{account=null;toolbar?.remove();toolbar=null;closeDialog();}finally{refreshing=false;}}
+async function refresh(){if(refreshing)return;refreshing=true;try{account=await api('me');if(!toolbar){toolbar=el('aside',{class:'stx-tools','aria-label':'Plugins und Free-Kontingent'});quota=el('span',{class:'stx-quota',role:'status'});const format=el('select',{'aria-label':'Ausgabeformat',class:'stx-output-format',title:'Die Windows-EXE wird aus Python gebaut; fremder Quelltext wird nicht umbenannt.'});for(const [value,label] of [['auto','Automatisch'],['python','Python-Datei (.py)'],['exe','Python + Windows-EXE']]){const option=el('option',{value,text:label});if(value==='exe'&&!window.stelexDesktop?.generateFiles)option.disabled=true;format.append(option);}format.value=requestedOutput;format.addEventListener('change',()=>{requestedOutput=format.value;});toolbar.append(el('button',{class:'stx-secondary',text:'↻ Updates',title:'Nach Updates suchen',onclick:openUpdates}),quota,el('label',{class:'stx-output-label'},el('small',{text:'Ausgabe'}),format),el('button',{class:'stx-primary',text:'＋ Plugins',onclick:openPlugins}));document.body.append(toolbar);void updateNotice();}const q=account.quota?.messages;quota.replaceChildren();if(q){quota.append(el('strong',{text:`Free: ${q.short.remaining}/${q.short.limit} · 5 Std.`}),el('small',{text:`Woche: ${q.week.remaining}/${q.week.limit} · Erneuerung ${time(q.short.resetAt)}`}));quota.title=`5-Stunden-Fenster: ${time(q.short.resetAt)}. Wochenfenster: ${time(q.week.resetAt)}. Gezählt werden erfolgreiche Antworten; laufende Antworten sind reserviert.`;}else quota.append(el('strong',{text:account.subscription?.planName||'Workspace'}));}catch{account=null;toolbar?.remove();toolbar=null;closeDialog();}finally{refreshing=false;}}
 function closeDialog(){if(!dialog)return;dialog.remove();dialog=null;document.body.classList.remove('stx-modal-open');previousFocus?.focus();}
 function modal(title){closeDialog();previousFocus=document.activeElement;const overlay=el('div',{class:'stx-overlay'});const panel=el('section',{class:'stx-panel',role:'dialog','aria-modal':'true','aria-label':title,tabindex:'-1'});overlay.append(panel);const titleEl=el('h2',{text:title});panel.append(el('header',{},titleEl,el('button',{class:'stx-close',text:'×','aria-label':'Schließen',onclick:closeDialog})));overlay.addEventListener('click',ev=>{if(ev.target===overlay)closeDialog();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape'){ev.preventDefault();closeDialog();}if(ev.key==='Tab'){const items=[...panel.querySelectorAll('button,input,a,textarea')].filter(x=>!x.disabled&&x.offsetParent!==null);const first=items[0],last=items.at(-1);if(ev.shiftKey&&document.activeElement===first){last?.focus();ev.preventDefault();}else if(!ev.shiftKey&&document.activeElement===last){first?.focus();ev.preventDefault();}}});dialog=overlay;document.body.append(overlay);document.body.classList.add('stx-modal-open');panel.focus();return panel;}
 async function openPlugins(){const panel=modal('Deine Plugins');const note=el('p',{class:'stx-muted',text:'Verbinde deine Dienste. Wähle Inhalte gezielt aus und übernimm sie als Datei in den Chat. Diese Verbindungen lesen Daten; sie senden keine Nachrichten und ändern keine entfernten Dateien.'});panel.append(note);const status=el('p',{role:'status',class:'stx-status',text:'Plugins werden geladen …'});panel.append(status);try{const {plugins}=await api('plugins');if(!panel.isConnected)return;status.textContent=`${plugins.length} Integrationen · ${plugins.filter(p=>p.connected).length} verbunden`;const search=el('input',{type:'search',class:'stx-search',placeholder:'Plugins durchsuchen …','aria-label':'Plugins durchsuchen'});const categories=el('div',{class:'stx-categories'});const grid=el('div',{class:'stx-grid'});let filter='Alle';const draw=()=>{grid.replaceChildren();const list=plugins.filter(p=>(filter==='Alle'||p.category===filter)&&(p.name+' '+p.description).toLowerCase().includes(search.value.toLowerCase()));if(!list.length)grid.append(el('p',{text:'Keine passenden Plugins.'}));for(const p of list){const card=el('article',{class:'stx-card'});card.append(el('div',{class:'stx-card-head'},el('span',{class:'stx-icon',text:p.name.slice(0,2).toUpperCase()}),el('span',{class:p.connected?'stx-connected':'stx-muted',text:p.connected?'Verbunden':'Nicht verbunden'})),el('h3',{text:p.name}),el('small',{text:p.category}),el('p',{text:p.description}),el('button',{class:p.connected?'stx-secondary':'stx-primary',text:p.connected?'Verwalten & öffnen':'Verbinden',onclick:()=>openConnection(p)}));grid.append(card);}};for(const label of ['Alle',...new Set(plugins.map(p=>p.category))]){const b=el('button',{class:'stx-filter',text:label,'aria-pressed':label==='Alle'?'true':'false',onclick:()=>{filter=label;for(const c of categories.children)c.setAttribute('aria-pressed',String(c===b));draw();}});categories.append(b);}search.addEventListener('input',draw);panel.append(search,categories,grid);draw();}catch(err){status.textContent=err.message;status.classList.add('stx-error');}}
@@ -32,3 +32,56 @@ window.fetch=async function(input,init){
  const response=await originalFetch.call(this,input,init);
  if(chat)queueMicrotask(()=>void refresh());return response;
 };
+
+// Releases are checked only on request. Installation remains an explicit user action.
+async function openUpdates(){
+ const panel=modal('Nach Updates suchen');
+ const status=el('p',{role:'status',text:'GitHub wird nach der neuesten veröffentlichten Version gefragt …'});panel.append(status);
+ try{
+  const response=await fetch('/api/updates/latest',{signal:AbortSignal.timeout(20000)});
+  if(!response.ok)throw Error('Update-Abfrage fehlgeschlagen (HTTP '+response.status+'). Bitte später erneut versuchen.');
+  const release=await response.json();
+  const page=new URL(release.html_url);
+  if(page.origin!=='https://github.com'||!page.pathname.startsWith('/stelexacc/New/releases/tag/'))throw Error('Ungültige Update-Adresse.');
+  status.textContent='Neueste veröffentlichte Version: '+release.tag_name;
+  panel.append(el('p',{text:release.name||release.tag_name}),el('p',{class:'stx-muted',text:'Die Versionsnummer oben bezeichnet die neueste Veröffentlichung auf GitHub. Lade das Setup herunter und schließe STELEX GPT vor der Installation. Deine Kontodaten bleiben erhalten.'}));
+  const button=el('button',{class:'stx-primary',text:'Update auf GitHub öffnen',onclick:()=>{if(window.stelex?.openExternal)void window.stelex.openExternal(page.href);else window.open(page.href,'_blank','noopener,noreferrer');}});panel.append(button);
+ }catch(error){status.textContent=error.message;status.classList.add('stx-error');}
+}
+
+// Route file drops anywhere in the chat to the same attachment input used by the picker.
+async function importDroppedFiles(files){
+ const input=document.querySelector('input.attachment-input');if(!input||input.disabled)return;
+ const transfer=new DataTransfer();
+ for(const file of files){
+  let normalized=file;
+  const ext=file.name.match(/\.(png|jpe?g|webp)$/i)?.[1]?.toLowerCase();
+  if(ext){const type=ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg';normalized=new File([file],file.name,{type});}
+  else if(file.type.startsWith('image/')||/\.(gif|bmp|avif)$/i.test(file.name)){
+   if(file.size>5*1024*1024)throw Error('Das Bild ist zu groß (maximal 5 MB).');
+   const bitmap=await createImageBitmap(file);
+   try{if(bitmap.width*bitmap.height>40000000)throw Error('Das Bild hat zu viele Pixel.');const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;canvas.getContext('2d').drawImage(bitmap,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw Error('Das Bild konnte nicht umgewandelt werden.');normalized=new File([blob],file.name.replace(/\.[^.]+$/,'')+'.png',{type:'image/png'});}finally{bitmap.close();}
+  }else if(file.size<=100*1024){
+   const bytes=new Uint8Array(await file.arrayBuffer());
+   try{const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);if(text.includes('\0'))throw Error('binary');normalized=new File([file],file.name,{type:'text/plain'});}catch{}
+  }
+  transfer.items.add(normalized);
+ }
+ input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+}
+document.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files')&&document.querySelector('input.attachment-input'))event.preventDefault();},true);
+document.addEventListener('drop',event=>{
+ if(!event.dataTransfer?.files.length||!document.querySelector('input.attachment-input'))return;
+ // Keep directory traversal in the existing project importer.
+ if([...event.dataTransfer.items].some(item=>item.webkitGetAsEntry?.()?.isDirectory))return;
+ event.preventDefault();event.stopPropagation();
+ void importDroppedFiles([...event.dataTransfer.files]).catch(error=>{const panel=modal('Dateiimport');panel.append(el('p',{role:'alert',text:error.message}));});
+},true);
+
+let lastUpdateCheck=0;
+async function updateNotice(){
+ if(!toolbar||Date.now()-lastUpdateCheck<15*60*1000)return;lastUpdateCheck=Date.now();
+ try{const release=await api('updates/latest');const published=Date.parse(release.published_at);const available=release.tag_name!=='v1.8.2-updates-admin'&&published>Date.parse('2026-10-23T21:30:00Z');const button=[...toolbar.querySelectorAll('button')].find(b=>b.title==='Nach Updates suchen');if(button){button.textContent=available?'● Update verfügbar':'↻ Updates';button.setAttribute('aria-label',available?'Update verfügbar – Nach Updates suchen':'Nach Updates suchen');if(available){button.style.borderColor='#ff2454';button.title='Nach Updates suchen';}}}catch{/* Offline operation must remain available. */}
+}
+setInterval(()=>{if(lastAuth&&document.visibilityState==='visible')void updateNotice();},30000);
+window.addEventListener('focus',()=>{if(lastAuth)void updateNotice();});

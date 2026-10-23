@@ -41,11 +41,11 @@
   },
   {
     "path": "dist/plugins.js",
-    "sha256": "44865687d01721c99c0ff33afcec7ce0907045d7bfb9912f558a4f320d231374"
+    "sha256": "baff278459f2bf6303287c1e19cbedde67b64d379f360953e263d5f0d69e955f"
   },
   {
     "path": "server/app.mjs",
-    "sha256": "a5c0364aa46749a7aa7c20e6ae485ea5b3ba04350af2e700b3ccda6aaca2ae87"
+    "sha256": "e5e4e906201988ee57eae98b57830b733595f78ffe37cf34f92924b1f2e21264"
   },
   {
     "path": "server/free-limits.mjs",
@@ -62,6 +62,14 @@
   {
     "path": "server/plugins.mjs",
     "sha256": "89bc75e032e687920f4c789b73fe1be9d10852f7f144ff15646b8ae81f2d067c"
+  },
+  {
+    "path": "server/update-publisher.mjs",
+    "sha256": "e5f842f88c6ec2b4b4317cf008ab6d7f222cea172229a5f8045c3a46c6184f59"
+  },
+  {
+    "path": "tests/admin-updates.test.mjs",
+    "sha256": "8cc34af07df0b5f760c6565802db0ac72ba2ecae026c3c09e35ff52ec5096928"
   },
   {
     "path": "tests/deepseek-catalog.test.mjs",

@@ -1,3 +1,4 @@
+import {publishUpdate,latestUpdate} from './update-publisher.mjs';
 import outputRules from '../config/output-contract.cjs';
 import generatedOutput from '../desktop/generated-files.cjs';
 import {createFreeLimits} from './free-limits.mjs';
@@ -289,6 +290,7 @@ export async function createApp(options = {}) {
       if(method==='GET' && path==='/api/chat/status'){
         const user=currentUser(request);const state=progress.get(`${user.id}:${url.searchParams.get('requestId')}`);return json(200,state||{stage:'preparing'});
       }
+      if(method==='GET' && path==='/api/updates/latest')return json(200,await latestUpdate());
       if (method === 'GET' && path === '/api/plans') return json(200,{...plans.catalog,verificationEnabled});
       if (method === 'GET' && path === '/api/health') {
         await checkProvider();
@@ -340,6 +342,7 @@ export async function createApp(options = {}) {
         limit(request, 'admin', 100);
         try { requireAdmin(request); } catch(error) {if(path === '/api/admin/login' && method === 'POST') plans.audit('admin_login_failed',null);throw error;}
         if(path === '/api/admin/login' && method === 'POST') { plans.audit('admin_login',null);return json(200,{ok:true}); }
+        if(method==='POST' && path==='/api/admin/updates')return json(201,await publishUpdate(request));
         if (path === '/api/admin/ai-settings' && ['GET','PUT'].includes(method)) {
           if (method === 'PUT') {
             const body=await readJson(request);
@@ -354,6 +357,24 @@ export async function createApp(options = {}) {
           const search=`%${query.toLowerCase().replace(/[\\%_]/g,'\\$&')}%`;
           const users=db.prepare("SELECT * FROM users WHERE LOWER(email) LIKE ? ESCAPE '\\' OR LOWER(name) LIKE ? ESCAPE '\\' ORDER BY createdAt DESC LIMIT 50").all(search,search);
           return json(200,{users:users.map(operatorUser)});
+        }
+        if (method === 'POST' && path === '/api/admin/credits') {
+          const {userId,credits,reason='',requestId}=await readJson(request);
+          if(typeof userId!=='string'||!integer(credits,1,1_000_000_000)||typeof reason!=='string'||reason.length>200||typeof requestId!=='string'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestId))throw new HttpError(400,'Use a valid account, credit amount and request UUID.','INVALID_GRANT');
+          const normalizedId=requestId.toLowerCase(),inputHash=hash(JSON.stringify({type:'credits',userId,credits,reason}));
+          const result=transaction(()=>{
+            const previous=db.prepare('SELECT inputHash,response FROM admin_grants WHERE requestId=?').get(normalizedId);
+            if(previous){if(previous.inputHash!==inputHash)throw new HttpError(409,'Request ID already used.','REQUEST_ID_REUSED');return JSON.parse(previous.response);}
+            const user=db.prepare('SELECT * FROM users WHERE id=?').get(userId);
+            if(!user)throw new HttpError(404,'Account not found.','NOT_FOUND');
+            const balance=user.balance+credits;
+            if(!integer(balance,0,Number.MAX_SAFE_INTEGER))throw new HttpError(409,'Balance limit exceeded.');
+            db.prepare('UPDATE users SET balance=? WHERE id=?').run(balance,userId);
+            recordLedger(userId,'admin_grant',credits,balance,reason);
+            plans.audit('credits_granted',user,{credits,reason,requestId:normalizedId});
+            const response={ok:true,user:operatorUser(db.prepare('SELECT * FROM users WHERE id=?').get(userId))};
+            db.prepare('INSERT INTO admin_grants VALUES(?,?,?,?)').run(normalizedId,inputHash,JSON.stringify(response),iso());return response;
+          });return json(200,result);
         }
         if (method === 'POST' && path === '/api/admin/grants') {
           const {userId,planId,durationDays=30,reason='',requestId}=await readJson(request);
