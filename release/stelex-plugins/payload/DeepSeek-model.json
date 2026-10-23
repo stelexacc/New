@@ -1,0 +1,15 @@
+﻿{
+  "id": "stelex-deepseek-r1-abliterated:8b",
+  "name": "DeepSeek R1 Abliterated · 8B",
+  "source": "huihui_ai/deepseek-r1-abliterated:8b",
+  "description": "Community-Abliteration · DeepSeek R1 Distill Llama · lokales Textmodell",
+  "tier": 0,
+  "textOnly": true,
+  "contextWindow": 4096,
+  "temperature": 0.8,
+  "topP": 0.9,
+  "topK": 40,
+  "repeatPenalty": 1.1,
+  "downloadGB": 5.0,
+  "recommended": false
+}

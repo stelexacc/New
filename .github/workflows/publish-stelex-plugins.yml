@@ -1,0 +1,26 @@
+name: Publish tested Stelex extension package
+on:
+  push:
+    branches: [release/stelex-deepseek-free-plugins]
+permissions:
+  contents: write
+concurrency:
+  group: publish-stelex-deepseek-free-plugins
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Download original public release
+        run: gh release download v1.8.1 --pattern STELEX-GPT-1.8.1-Komplett.zip --dir base
+      - name: Assemble and verify every package entry
+        run: python3 release/stelex-plugins/assemble.py base/STELEX-GPT-1.8.1-Komplett.zip output
+      - name: Upload package and checksum to the prepared release
+        run: gh release upload v1.8.1-deepseek-free-plugins output/STELEX-GPT-1.8.1-DeepSeek-FreeLimits-Plugins.zip output/STELEX-GPT-1.8.1-DeepSeek-FreeLimits-Plugins.zip.sha256 --clobber
+      - name: Publish completed release
+        run: gh release edit v1.8.1-deepseek-free-plugins --draft=false --latest=false
